@@ -72,3 +72,100 @@ pa_broad <- virtualspecies::sampleOccurrences(
 # Visualisieren
 plot(virtual_narrow$suitab.raster)
 points(pa_narrow$sample.points[, c("x", "y")], pch = 19, cex = 0.5)
+
+
+
+set.seed(42)
+
+# --- Narrow niche (specialist) ---
+params_narrow <- formatFunctions(
+  PC1 = c(fun = "dnorm", mean = 0, sd = 0.2),
+  PC2 = c(fun = "dnorm", mean = 0, sd = 0.2)
+)
+
+virtual_narrow <- generateSpFromFun(
+  raster.stack = pc_raster,
+  parameters   = params_narrow,
+  species.type = "multiplicative",
+  plot         = TRUE
+)
+virtual_narrow$species.name <- "narrow"
+virtual_narrow_PA <- convertToPA(
+  virtual_narrow, 
+  beta = 0.5, 
+  alpha = -0.05, 
+  plot = TRUE
+)
+
+
+# --- Intermediate niche ---
+params_intermediate <- formatFunctions(
+  PC1 = c(fun = "dnorm", mean = 0, sd = 0.5),
+  PC2 = c(fun = "dnorm", mean = 0, sd = 0.5)
+)
+
+virtual_intermediate <- generateSpFromFun(
+  raster.stack = pc_raster,
+  parameters   = params_intermediate,
+  species.type = "multiplicative",
+  plot         = TRUE
+)
+virtual_intermediate$species.name <- "intermediate"
+virtual_intermediate_PA <- convertToPA(
+  virtual_intermediate, 
+  beta = 0.5, 
+  alpha = -0.05, 
+  plot = TRUE
+)
+
+# --- Broad niche (generalist) ---
+params_broad <- formatFunctions(
+  PC1 = c(fun = "dnorm", mean = 0, sd = 0.8),
+  PC2 = c(fun = "dnorm", mean = 0, sd = 0.8)
+)
+
+virtual_broad <- generateSpFromFun(
+  raster.stack = pc_raster,
+  parameters   = params_broad,
+  species.type = "multiplicative",
+  plot         = TRUE
+)
+virtual_broad$species.name <- "broad"
+virtual_broad_PA <- convertToPA(
+  virtual_broad, 
+  beta = 0.5, 
+  alpha = -0.05, 
+  plot = TRUE
+)
+
+# --- Presence Points sampeln ---
+set.seed(42)
+
+pa_narrow <- sampleOccurrences(
+  virtual_narrow_PA,
+  n = 100,
+  type = "presence only",
+  correct.by.suitability = TRUE
+)
+
+pa_intermediate <- sampleOccurrences(
+  virtual_intermediate_PA,
+  n = 100,
+  type = "presence only",
+  correct.by.suitability = TRUE
+)
+
+pa_broad <- sampleOccurrences(
+  virtual_broad_PA,
+  n = 100,
+  type = "presence only",
+  correct.by.suitability = TRUE
+)
+
+# --- Speichern ---
+saveRDS(list(virtual_narrow, virtual_narrow_PA, pa_narrow), 
+        "species_narrow.RDS")
+saveRDS(list(virtual_intermediate, virtual_intermediate_PA, pa_intermediate), 
+        "species_intermediate.RDS")
+saveRDS(list(virtual_broad, virtual_broad_PA, pa_broad), 
+        "species_broad.RDS")
