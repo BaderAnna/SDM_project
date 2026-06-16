@@ -17,31 +17,28 @@ for (pkg in list.of.packages) {
 # Load the packages
 lapply(list.of.packages, library, character.only = TRUE)
 
-getwd()
-
 # 2 - prepare some bioclimatic variables ####
 #-------------------------------------------#
-
-# make sure the path to the folder raster exists on your PC:
 bioclim= geodata::worldclim_country(country="Germany", path="Data/raster", var="bio")
 
 r=terra::rast("Data/raster/climate/wc2.1_country/DEU_wc2.1_30s_bio.tif")
+
 # have a look at your rasters  
 terra::plot(r)  
 
 # 3 - PCA ####
 #-------------------------------------------#
 
-# Variablen auswählen (BIO1, BIO4, BIO12, BIO15)
+# Select variables (BIO1, BIO4, BIO12, BIO15)
 bio_subset <- r[[c(1, 4, 12, 15)]]
 
 # have a look at your rasters  
 terra::plot(bio_subset) 
 
-# In Matrix umwandeln für PCA
+# matrix 
 vals <- values(bio_subset, na.rm=TRUE)
 
-# PCA durchführen (skaliert + zentriert)
+# PCA 
 pca <- prcomp(vals, scale. = TRUE, center = TRUE)
 
 # Varianzaufklärung anschauen
@@ -81,3 +78,30 @@ names(pc_raster) <- c("PC1", "PC2")
 
 # Visualisieren
 terra::plot(pc_raster)
+
+# 4 - Germany ####
+#-------------------------------------------#
+library(rnaturalearth)
+library(rnaturalearthdata)
+
+# Deutschland-Grenze laden
+germany_sf <- rnaturalearth::ne_countries(
+  country = "Germany", 
+  scale = "medium", 
+  returnclass = "sf"
+)
+
+# Raster maskieren
+pc_raster_masked <- terra::mask(pc_raster, terra::vect(germany_sf))
+
+terra::plot(pc_raster_masked)
+
+# PC Raster speichern
+terra::writeRaster(
+  pc_raster_masked,
+  filename  = "Data/raster/pc_raster_masked.tif",
+  overwrite = TRUE
+)
+
+# PCA speichern
+saveRDS(pca, "Data/pca.RDS")
