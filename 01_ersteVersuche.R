@@ -17,14 +17,15 @@ for (pkg in list.of.packages) {
 # Load the packages
 lapply(list.of.packages, library, character.only = TRUE)
 
+getwd()
 
 # 2 - prepare some bioclimatic variables ####
 #-------------------------------------------#
 
 # make sure the path to the folder raster exists on your PC:
-bioclim= geodata::worldclim_country(country="Germany", path="raster", var="bio")
+bioclim= geodata::worldclim_country(country="Germany", path="Data/raster", var="bio")
 
-r=terra::rast("raster/climate/wc2.1_country/DEU_wc2.1_30s_bio.tif")
+r=terra::rast("Data/raster/climate/wc2.1_country/DEU_wc2.1_30s_bio.tif")
 # have a look at your rasters  
 terra::plot(r)  
 
@@ -43,8 +44,11 @@ sd(values(bio1),  na.rm=TRUE)
 sd(values(bio12), na.rm=TRUE)
 
 ## PCA
-# Variablen auswählen (z.B. BIO1, BIO4, BIO12, BIO15)
+# Variablen auswählen (BIO1, BIO4, BIO12, BIO15)
 bio_subset <- r[[c(1, 4, 12, 15)]]
+
+# have a look at your rasters  
+terra::plot(bio_subset) 
 
 # In Matrix umwandeln für PCA
 vals <- values(bio_subset, na.rm=TRUE)
