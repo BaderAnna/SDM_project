@@ -32,18 +32,6 @@ terra::plot(r)
 # 3 - PCA ####
 #-------------------------------------------#
 
-# BIO1 (annual mean temperature) und BIO12 (annual precipitation) auswählen
-bio1  <- r[[1]]   # BIO1
-bio12 <- r[[12]]  # BIO12
-
-# Wertebereich und Standardabweichung der Variablen anschauen
-summary(values(bio1),  na.rm=TRUE)
-summary(values(bio12), na.rm=TRUE)
-
-sd(values(bio1),  na.rm=TRUE)
-sd(values(bio12), na.rm=TRUE)
-
-## PCA
 # Variablen auswählen (BIO1, BIO4, BIO12, BIO15)
 bio_subset <- r[[c(1, 4, 12, 15)]]
 
@@ -70,3 +58,26 @@ sd(pca$x[,2])
 
 # Loadings anschauen
 pca$rotation
+
+# PCA RASTER ERSTELLEN ####
+#-------------------------------------------#
+# PCA auf die Rasterdaten anwenden
+# Erst alle Werte extrahieren (inkl. NA-Positionen für spätere Rückprojektion)
+vals_all <- values(bio_subset)
+
+# PCA-Scores für alle Pixel berechnen
+scores_all <- predict(pca, newdata = vals_all)
+
+# Raster mit PC1 und PC2 erstellen
+pc1_rast <- bio_subset[[1]]  # als Template
+pc2_rast <- bio_subset[[1]]
+
+values(pc1_rast) <- scores_all[, 1]
+values(pc2_rast) <- scores_all[, 2]
+
+# Stapeln zu einem 2-Layer Raster
+pc_raster <- c(pc1_rast, pc2_rast)
+names(pc_raster) <- c("PC1", "PC2")
+
+# Visualisieren
+terra::plot(pc_raster)
