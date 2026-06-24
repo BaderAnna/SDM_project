@@ -7,11 +7,11 @@ pc_raster_masked   <- terra::rast("Data/raster/pc_raster_masked.tif")
 # VIRTUELLE ARTEN ERSTELLEN ####
 #-------------------------------------------#
 # Gaussian response functions entlang PC1 und PC2
-# σ-Werte: 0.2 (schmal), 0.5 (mittel), 0.8 (breit)
+# σ-Werte: 0.2 (schmal), 0.4 (schmal-mittel), 0.6 (mittel-breit), 0.8 (breit)
 
 set.seed(42)
 
-# --- Narrow niche (specialist) ---
+# --- Narrow niche ---
 params_narrow <- formatFunctions(
   PC1 = c(fun = "dnorm", mean = 0, sd = 0.2),
   PC2 = c(fun = "dnorm", mean = 0, sd = 0.2)
@@ -32,10 +32,10 @@ virtual_narrow_PA <- convertToPA(
 )
 
 
-# --- Intermediate niche ---
+# --- Intermediate niche 1 ---
 params_intermediate <- formatFunctions(
-  PC1 = c(fun = "dnorm", mean = 0, sd = 0.5),
-  PC2 = c(fun = "dnorm", mean = 0, sd = 0.5)
+  PC1 = c(fun = "dnorm", mean = 0, sd = 0.4),
+  PC2 = c(fun = "dnorm", mean = 0, sd = 0.4)
 )
 
 virtual_intermediate <- generateSpFromFun(
@@ -52,7 +52,28 @@ virtual_intermediate_PA <- convertToPA(
   plot = TRUE
 )
 
-# --- Broad niche (generalist) ---
+# --- Intermediate niche 2---
+params_intermediate2 <- formatFunctions(
+  PC1 = c(fun = "dnorm", mean = 0, sd = 0.6),
+  PC2 = c(fun = "dnorm", mean = 0, sd = 0.6)
+)
+
+virtual_intermediate2 <- generateSpFromFun(
+  raster.stack = pc_raster_masked,
+  parameters   = params_intermediate2,
+  species.type = "multiplicative",
+  plot         = TRUE
+)
+virtual_intermediate2$species.name <- "intermediate2"
+virtual_intermediate_PA2 <- convertToPA(
+  virtual_intermediate2, 
+  beta = 0.5, 
+  alpha = -0.05, 
+  plot = TRUE
+)
+
+
+# --- Broad niche ---
 params_broad <- formatFunctions(
   PC1 = c(fun = "dnorm", mean = 0, sd = 0.8),
   PC2 = c(fun = "dnorm", mean = 0, sd = 0.8)
@@ -89,6 +110,13 @@ pa_intermediate <- sampleOccurrences(
   correct.by.suitability = TRUE
 )
 
+pa_intermediate2 <- sampleOccurrences(
+  virtual_intermediate_PA2,
+  n = 100,
+  type = "presence only",
+  correct.by.suitability = TRUE
+)
+
 pa_broad <- sampleOccurrences(
   virtual_broad_PA,
   n = 100,
@@ -101,12 +129,15 @@ saveRDS(list(virtual_narrow, virtual_narrow_PA, pa_narrow),
         "Data/species/species_narrow.RDS")
 saveRDS(list(virtual_intermediate, virtual_intermediate_PA, pa_intermediate), 
         "Data/species/species_intermediate.RDS")
+saveRDS(list(virtual_intermediate2, virtual_intermediate_PA2, pa_intermediate2), 
+        "Data/species/species_intermediate2.RDS")
 saveRDS(list(virtual_broad, virtual_broad_PA, pa_broad), 
         "Data/species/species_broad.RDS")
 
 
 plotResponse(virtual_narrow)
 plotResponse(virtual_intermediate)
+plotResponse(virtual_intermediate2)
 plotResponse(virtual_broad)
 
 
@@ -114,7 +145,7 @@ plotResponse(virtual_broad)
 # PRESENCE SAMPLING - alle drei Arten
 # → kontrolliertes Design für Algorithmenvergleich
 # =============================================================================
-# --- NARROW (specialist) ---
+# --- NARROW ---
 
 # Presence-only (für MaxEnt UND GLM presences - gleiche Punkte!)
 po_narrow <- sampleOccurrences(
@@ -182,6 +213,34 @@ saveRDS(list(
   brt_runs_intermediate = brt_runs_intermediate
 ), "Data/species/sampling_intermediate.RDS")
 
+# --- INTERMEDIATE 2 ---
+po_intermediate2 <- sampleOccurrences(
+  virtual_intermediate_PA2, n = 100,
+  type = "presence only",
+  correct.by.suitability = TRUE)
+
+bg_intermediate_glm2 <- predicts::backgroundSample(
+  virtual_intermediate_PA2$pa.raster, n = 1000)
+
+pres_intermediate2 <- po_intermediate2$sample.points[
+  po_intermediate2$sample.points$Observed == 1, c("x", "y")]
+pres_intermediate2$presence <- 1
+
+brt_runs_intermediate2 <- list()
+for(i in 1:10){
+  set.seed(i)
+  abs_i2 <- as.data.frame(predicts::backgroundSample(
+    virtual_intermediate_PA2$pa.raster, n = 100))
+  abs_i2$presence <- 0
+  brt_runs_intermediate2[[i]] <- rbind(pres_intermediate2, abs_i2)
+}
+
+saveRDS(list(
+  po_intermediate2       = po_intermediate2,
+  bg_intermediate_glm2   = bg_intermediate_glm2,
+  pres_intermediate2     = pres_intermediate2,
+  brt_runs_intermediate2 = brt_runs_intermediate2
+), "Data/species/sampling_intermediate2.RDS")
 
 # --- BROAD ---
 po_broad <- sampleOccurrences(
