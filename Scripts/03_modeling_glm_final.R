@@ -63,7 +63,6 @@ print(glm_formula)
 
 # =============================================================================
 # 3 - Daten vorbereiten
-#     WICHTIG: Koordinaten sind bereits in EPSG:3035 -> KEINE Transformation!
 # =============================================================================
 
 prepare_glm_data <- function(sampling, env_raster) {
@@ -268,7 +267,7 @@ run_glm_knndm <- function(sampling, env_raster, glm_formula,
 
 env_raster_masked <- terra::rast("Data/raster/env_raster_masked.tif")
 selected_vars     <- readRDS("Data/raster/selected_vars.RDS")
-names(env_raster_masked) <- selected_vars  # Namen sicherstellen!
+names(env_raster_masked) <- selected_vars  # Namen sicherstellen
 glm_formula       <- build_glm_formula(selected_vars)
 
 sampling_narrow       <- readRDS("Data/species/sampling_narrow.RDS")

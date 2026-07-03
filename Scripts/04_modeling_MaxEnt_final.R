@@ -52,7 +52,7 @@ prepare_maxnet_data <- function(sampling, env_raster) {
   message("NA-Anteil env_vals: ",
           round(mean(is.na(env_vals)) * 100, 1), "%")
   
-  # ✅ Variablen standardisieren (z-Transformation)
+  # Variablen standardisieren (z-Transformation)
   env_vals_scaled <- as.data.frame(scale(env_vals))
   
   # Skalierungsparameter speichern (für spätere Vorhersage!)

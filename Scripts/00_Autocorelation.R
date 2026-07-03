@@ -8,7 +8,7 @@ r_3035 <- terra::project(r, "EPSG:3035")
 bio_subset <- pc[[c(1, 4, 12, 15)]]
 
 # Variogram
-install.packages("ctmm")
+#install.packages("ctmm")
 library(ctmm)
 #variogram(r_3035$wc2.1_30s_bio_1)
 
@@ -34,4 +34,4 @@ v <- variogram(wc2.1_30s_bio_1 ~ 1, data = df_sample)
 plot(v)
 
 
-# Coreogramd 
+# Coreogram 
