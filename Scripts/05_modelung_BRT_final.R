@@ -347,6 +347,3 @@ saveRDS(brt_low_mid,  "Data/models/brt_low_mid.RDS")
 saveRDS(brt_high_mid, "Data/models/brt_high_mid.RDS")
 saveRDS(brt_broad,    "Data/models/brt_broad.RDS")
 saveRDS(results_brt,  "Data/models/results_brt.RDS")
-
-message("✅ Alle BRT-Modelle gespeichert!")
-print(results_brt)

@@ -324,6 +324,3 @@ saveRDS(mx_low_mid,     "Data/models/maxnet_low_mid.RDS")
 saveRDS(mx_high_mid,    "Data/models/maxnet_high_mid.RDS")
 saveRDS(mx_broad,       "Data/models/maxnet_broad.RDS")
 saveRDS(results_maxnet, "Data/models/results_maxnet.RDS")
-
-message("✅ Alle MaxNet-Modelle gespeichert!")
-print(results_maxnet)
