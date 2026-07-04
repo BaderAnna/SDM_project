@@ -56,6 +56,7 @@ sd(pca$x[,2])
 # Loadings anschauen
 pca$rotation
 
+
 # PCA RASTER ERSTELLEN ####
 #-------------------------------------------#
 # PCA auf die Rasterdaten anwenden
@@ -105,6 +106,7 @@ terra::writeRaster(
 
 # PCA speichern
 saveRDS(pca, "Data/pca.RDS")
+
 
 # =============================================================================
 # Abbildung
@@ -241,3 +243,20 @@ wrap_plots(plots_pc, nrow = 2) +
                                    family = "mono")
     )
   )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
