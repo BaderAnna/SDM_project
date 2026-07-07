@@ -121,31 +121,7 @@ for (sp in names(species_list)) {
 }
 
 # =============================================================================
-# Visualisierung - alle 4 Arten vergleichen
-# =============================================================================
-
-# Eignungskarten
-par(mfrow = c(2, 2))
-for (sp in names(species_list)) {
-  obj <- readRDS(paste0("Data/species/species_", sp, ".RDS"))
-  plot(obj$virtual$suitab.raster,
-       main = paste0(sp, " (σ = ", species_list[[sp]]$sd, ")"))
-}
-par(mfrow = c(1, 1))
-
-# Response curves
-par(mfrow = c(2, 2))
-for (sp in names(species_list)) {
-  obj <- readRDS(paste0("Data/species/species_", sp, ".RDS"))
-  plotResponse(obj$virtual,
-               main = paste0(sp, " (σ = ", species_list[[sp]]$sd, ")"))
-}
-par(mfrow = c(1, 1))
-
-
-
-# =============================================================================
-# Eignungskarten der 4 virtuellen Arten
+# Visualisierung: Eignungskarten der 4 virtuellen Arten
 # =============================================================================
 library(ggplot2)
 library(tidyterra)
