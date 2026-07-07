@@ -63,6 +63,9 @@ sample_species <- function(species_PA, n_pres = 100,
 # =============================================================================
 # Virtuelle Arten & Sampling
 # =============================================================================
+?convertToPA
+summary(virtual_sp$suitab.raster)  # Wertebereich der Suitability prüfen
+
 set.seed(42)
 
 species_list <- list(
