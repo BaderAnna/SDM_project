@@ -53,3 +53,78 @@ saveRDS(selected_vars, "Data/raster/selected_vars.RDS")
 message("Raster-Namen: ", paste(names(env_raster_masked), collapse = ", "))
 terra::plot(env_raster_masked)
 
+
+# =============================================================================
+# Plot der 7 ausgewählten Bioklimavariablen (nach VIF-Auswahl)
+# =============================================================================
+
+# =============================================================================
+# Plot der 7 ausgewählten Bioklimavariablen (nach VIF-Auswahl) - mit Klarnamen
+# =============================================================================
+
+# Lookup-Tabelle: technischer Name -> beschreibender Titel
+bio_labels <- c(
+  wc2.1_30s_bio_1  = "Mean Temp.",
+  wc2.1_30s_bio_2  = "Mean Diurnal Range",
+  wc2.1_30s_bio_3  = "Isothermality",
+  wc2.1_30s_bio_4  = "Temp. Seasonality",
+  wc2.1_30s_bio_5  = "Max Temp. Warmest Month",
+  wc2.1_30s_bio_6  = "Min Temp. Coldest Month",
+  wc2.1_30s_bio_7  = "Temp. Annual Range",
+  wc2.1_30s_bio_8  = "Mean Temp. Wettest Quarter",
+  wc2.1_30s_bio_9  = "Mean Temp. Driest Quarter",
+  wc2.1_30s_bio_10 = "Mean Temp. Warmest Quarter",
+  wc2.1_30s_bio_11 = "Mean Temp. Coldest Quarter",
+  wc2.1_30s_bio_12 = "Annual Precip.",
+  wc2.1_30s_bio_13 = "Precip. Wettest Month",
+  wc2.1_30s_bio_14 = "Precip. Driest Month",
+  wc2.1_30s_bio_15 = "Precip. Seasonality",
+  wc2.1_30s_bio_16 = "Precip. Wettest Quarter",
+  wc2.1_30s_bio_17 = "Precip. Driest Quarter",
+  wc2.1_30s_bio_18 = "Precip. Warmest Quarter",
+  wc2.1_30s_bio_19 = "Precip. Coldest Quarter"
+)
+
+# Variablen aus der VIF-Auswahl laden
+selected_vars <- readRDS("Data/raster/selected_vars.RDS")
+
+env_vars <- lapply(selected_vars, function(v) {
+  list(
+    name   = v,
+    label  = bio_labels[[v]],   # Klarname statt technischem Namen
+    option = "cividis"
+  )
+})
+
+plots_env <- lapply(env_vars, function(v) {
+  ggplot() +
+    tidyterra::geom_spatraster(data = env_raster_masked[[v$name]]) +
+    scale_fill_viridis_c(
+      option   = v$option,
+      na.value = "white",
+      name     = ""
+    ) +
+    labs(title = v$label) +
+    theme_void() +
+    theme(
+      plot.title      = element_text(size = 9, hjust = 0.5,
+                                     face = "bold"),
+      legend.position = "none",
+      plot.background = element_rect(fill      = "white",
+                                     color     = "grey80",
+                                     linewidth = 0.5)
+    )
+})
+
+# Zusammenfügen
+wrap_plots(plots_env, ncol = 4) +
+  plot_annotation(
+    title    = "Selected Bioclimatic Variables",
+    theme    = theme(
+      plot.title    = element_text(size = 14, hjust = 0.5,
+                                   face = "bold"),
+      plot.subtitle = element_text(size =  8, hjust = 0.5,
+                                   color = "grey40",
+                                   family = "mono")
+    )
+  )
