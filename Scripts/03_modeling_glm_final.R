@@ -13,40 +13,12 @@ if (!requireNamespace("pROC", quietly = TRUE)) install.packages("pROC")
 library(pROC)
 
 # =============================================================================
-# 1 - WorldClim Raster laden, VIF-Reduktion, maskieren, speichern
+# 1 - Raster + Variablen laden
 # =============================================================================
 
-r <- terra::rast("Data/raster/climate/wc2.1_country/DEU_wc2.1_30s_bio.tif")
-
-vals_19    <- as.data.frame(terra::values(r, na.rm = TRUE))
-set.seed(42)
-vif_result    <- usdm::vifstep(vals_19, th = 10)
-selected_vars <- as.character(vif_result@results$Variables)
-message("Behaltene Variablen: ", paste(selected_vars, collapse = ", "))
-
-r_reduced        <- r[[selected_vars]]
-names(r_reduced) <- selected_vars
-
-r_reduced_3035        <- terra::project(r_reduced, "EPSG:3035")
-names(r_reduced_3035) <- selected_vars
-
-germany_sf      <- rnaturalearth::ne_countries(country = "Germany",
-                                               scale   = "medium",
-                                               returnclass = "sf")
-germany_sf_3035 <- sf::st_transform(germany_sf, crs = 3035)
-
-env_raster_masked        <- terra::mask(r_reduced_3035,
-                                        terra::vect(germany_sf_3035))
+env_raster_masked <- terra::rast("Data/raster/env_raster_masked.tif")
+selected_vars     <- readRDS("Data/raster/selected_vars.RDS")
 names(env_raster_masked) <- selected_vars
-
-dir.create("Data/raster", recursive = TRUE, showWarnings = FALSE)
-terra::writeRaster(env_raster_masked,
-                   "Data/raster/env_raster_masked.tif",
-                   overwrite = TRUE)
-saveRDS(selected_vars, "Data/raster/selected_vars.RDS")
-
-message("Raster-Namen: ", paste(names(env_raster_masked), collapse = ", "))
-terra::plot(env_raster_masked)
 
 # =============================================================================
 # 2 - GLM-Formel dynamisch bauen
@@ -192,12 +164,12 @@ run_glm_knndm <- function(sampling, env_raster, glm_formula,
       n_pres  <- sum(train$presence == 1)
       n_abs   <- sum(train$presence == 0)
       
-      # ✅ Gewichte direkt in train einfügen
+      # gewichte direkt in train einfügen
       train$.weights <- ifelse(train$presence == 1, 1, n_pres / n_abs)
       
       model <- suppressWarnings(
         glm(glm_formula, data = train,
-            family = binomial, weights = .weights)  # ✅
+            family = binomial, weights = .weights)  
       )
       
       fold_preds[test_idx]  <- predict(model, newdata = test,
@@ -235,12 +207,12 @@ run_glm_knndm <- function(sampling, env_raster, glm_formula,
   n_pres <- sum(dat$presence == 1)
   n_abs  <- sum(dat$presence == 0)
   
-  # ✅ Gewichte direkt in dat einfügen
+  # gewichte direkt in dat einfügen
   dat$.weights <- ifelse(dat$presence == 1, 1, n_pres / n_abs)
   
   final_model <- suppressWarnings(
     glm(glm_formula, data = dat,
-        family = binomial, weights = .weights)  # ✅
+        family = binomial, weights = .weights)  
   )
   
   final_pred <- terra::predict(env_raster, final_model, type = "response")
