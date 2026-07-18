@@ -33,6 +33,7 @@ split_data_knndm <- function(sampling, species_PA,
   # 3. Vorhersagepunkte für kNNDM (aus Raster)
   # -------------------------------------------------------------------
   predictor_raster <- terra::rast("Data/raster/pc_raster_masked.tif")
+  
   predictor_raster <- terra::project(predictor_raster, "EPSG:3035")
   
   set.seed(seed)
@@ -93,6 +94,12 @@ split_data_knndm <- function(sampling, species_PA,
   # 7. True Absences → alle in die Evaluation
   # -------------------------------------------------------------------
   pa_raster <- species_PA$pa.raster
+  
+  # unwrap if needed
+  if (inherits(pa_raster, "PackedSpatRaster")) {
+    pa_raster <- terra::unwrap(pa_raster)
+  }
+  
   
   set.seed(seed)
   true_abs_pts <- terra::spatSample(
