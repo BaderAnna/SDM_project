@@ -179,6 +179,68 @@ split_data_knndm <- function(sampling, species_PA,
   )
 }
 
+library(sf)
+
+# =============================================================================
+# 1.2 Hilfsfunktion: Datensätze als GeoPackage für QGIS speichern
+# =============================================================================
+
+save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
+  
+  dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+  gpkg_path <- file.path(out_dir, paste0("split_", sp, ".gpkg"))
+  
+  # -------------------------------------------------------------------
+  # GLM Training
+  # -------------------------------------------------------------------
+  glm_sf <- sf::st_as_sf(split$train_glm, coords = c("x", "y"), crs = 3035)
+  glm_sf$type <- ifelse(glm_sf$presence == 1, "presence", "pseudo_absence")
+  sf::st_write(glm_sf, gpkg_path, layer = "train_glm",
+               delete_layer = TRUE, quiet = TRUE)
+  
+  # -------------------------------------------------------------------
+  # MaxEnt Training
+  # -------------------------------------------------------------------
+  maxent_sf <- sf::st_as_sf(split$train_maxent, coords = c("x", "y"), crs = 3035)
+  maxent_sf$type <- ifelse(maxent_sf$presence == 1, "presence", "background")
+  sf::st_write(maxent_sf, gpkg_path, layer = "train_maxent",
+               delete_layer = TRUE, quiet = TRUE)
+  
+  # -------------------------------------------------------------------
+  # BRT/RF Training (alle 10 Runs in einem Layer, mit Run-ID als Spalte)
+  # -------------------------------------------------------------------
+  brt_combined <- do.call(rbind, lapply(seq_along(split$train_brt_runs), function(i) {
+    run_df <- split$train_brt_runs[[i]]
+    run_df$run <- i
+    run_df
+  }))
+  brt_sf <- sf::st_as_sf(brt_combined, coords = c("x", "y"), crs = 3035)
+  brt_sf$type <- ifelse(brt_sf$presence == 1, "presence", "pseudo_absence")
+  sf::st_write(brt_sf, gpkg_path, layer = "train_brt_runs",
+               delete_layer = TRUE, quiet = TRUE)
+  
+  # -------------------------------------------------------------------
+  # Testdatensatz (gemeinsam)
+  # -------------------------------------------------------------------
+  test_sf <- sf::st_as_sf(split$test, coords = c("x", "y"), crs = 3035)
+  test_sf$type <- ifelse(test_sf$presence == 1, "presence", "true_absence")
+  sf::st_write(test_sf, gpkg_path, layer = "test",
+               delete_layer = TRUE, quiet = TRUE)
+  
+  # -------------------------------------------------------------------
+  # Optional: kNNDM Folds visualisieren (alle Presence-Punkte mit Fold-ID)
+  # -------------------------------------------------------------------
+  pres_folds <- sampling$po$sample.points[
+    sampling$po$sample.points$Observed == TRUE, ]
+  pres_folds <- data.frame(x = pres_folds$x, y = pres_folds$y,
+                           fold = split$fold_ids)
+  folds_sf <- sf::st_as_sf(pres_folds, coords = c("x", "y"), crs = 3035)
+  folds_sf$fold <- as.factor(folds_sf$fold)
+  sf::st_write(folds_sf, gpkg_path, layer = "knndm_folds",
+               delete_layer = TRUE, quiet = TRUE)
+  
+  message("✓ GeoPackage gespeichert: ", gpkg_path)
+}
 
 # =============================================================================
 # 2. Split für alle Arten + Speichern
@@ -208,6 +270,9 @@ for (sp in species_list) {
   saveRDS(split$train_maxent,   paste0("Data/species/split_knndm/train_maxent_", sp, ".RDS"))
   saveRDS(split$train_brt_runs, paste0("Data/species/split_knndm/train_brt_",    sp, ".RDS"))
   saveRDS(split$test,           paste0("Data/species/split_knndm/test_",         sp, ".RDS"))
+  
+  save_as_gpkg(split, sp)
+  
   
 }
 
