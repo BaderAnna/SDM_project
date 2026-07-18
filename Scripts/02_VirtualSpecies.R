@@ -124,24 +124,34 @@ for (sp in names(species_list)) {
 
 # =============================================================================
 # TRUE ABSENCES ERSTELLEN
-# (Am besten im Virtual Species Skript)
 # =============================================================================
 
-for (sp in names(species_list)) {
+species_list <- c("narrow", "low_mid", "high_mid", "broad")
+
+dir.create("Data/species", recursive = TRUE, showWarnings = FALSE)
+
+for (sp in species_list) {
+  
+  message("===== ", sp, " =====")
   
   # Lade PA-Raster
   species_PA <- readRDS(paste0("Data/species/species_", sp, ".RDS"))$virtual_PA
-  pa_raster  <- species_PA$pa.raster
+  
+  # entpacke das Raster
+  pa_raster <- terra::unwrap(species_PA$pa.raster)
   
   # Sample zufällige Punkte
   set.seed(42)
   all_pts <- terra::spatSample(
     pa_raster,
-    size      = 5000,  # Mehr samplen, dann filtern
+    size      = 1000,
     method    = "random",
     na.rm     = TRUE,
     as.points = TRUE
   ) |> as.data.frame(geom = "XY")
+  
+  # Prüfe Spaltennamen
+  message("Spaltennamen: ", paste(names(all_pts), collapse = ", "))
   
   # Nur echte Abwesenheiten (pa == 0)
   true_abs <- all_pts[all_pts[, 1] == 0, c("x", "y")]
@@ -151,7 +161,10 @@ for (sp in names(species_list)) {
   
   # Speichern
   saveRDS(true_abs, paste0("Data/species/true_abs_", sp, ".RDS"))
+  
+  message("✓ ", sp, " gespeichert!")
 }
+
 
 # =============================================================================
 # Visualisierung: Eignungskarten der 4 virtuellen Arten

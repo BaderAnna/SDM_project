@@ -169,7 +169,4 @@ for (sp in species_list) {
   saveRDS(split$train, paste0("Data/species/split_knndm/train_", sp, ".RDS"))
   saveRDS(split$test,  paste0("Data/species/split_knndm/test_",  sp, ".RDS"))
   
-  message("✓ ", sp, " gespeichert!")
 }
-
-message("✅ Alle Arten gesplittet und gespeichert!")
