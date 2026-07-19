@@ -179,8 +179,6 @@ split_data_knndm <- function(sampling, species_PA,
   )
 }
 
-library(sf)
-
 # =============================================================================
 # 1.2 Hilfsfunktion: Datensätze als GeoPackage für QGIS speichern
 # =============================================================================
