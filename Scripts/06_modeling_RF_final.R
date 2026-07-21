@@ -152,7 +152,7 @@ for (sp in species_list) {
   
   message("===== ", sp, " (Training) =====")
   
-  train_rf <- readRDS(paste0("Data/species/split_knndm/train_rf_", sp, ".RDS"))
+  train_rf <- readRDS(paste0("Data/species/split_knndm/train_brt_", sp, ".RDS"))
   
   rf_models_train[[sp]] <- run_rf_train(
     train_df   = train_rf,
