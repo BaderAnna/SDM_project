@@ -15,8 +15,8 @@ pc_raster_masked <- terra::project(pc_raster_masked, "EPSG:3035")
 # =============================================================================
 # Helper-Funktion: Sampling für eine Art
 # =============================================================================
-sample_species <- function(species_PA, n_pres = 100,
-                           n_glm_abs = 10000, n_brt_abs = 100,
+sample_species <- function(species_PA, n_pres = 1000,
+                           n_glm_abs = 10000, n_brt_abs = 1000,
                            n_maxent_bg = 10000, n_runs = 10) {
   
   # Presence-only (MaxEnt & GLM)

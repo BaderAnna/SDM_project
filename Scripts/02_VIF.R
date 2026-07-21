@@ -53,11 +53,6 @@ saveRDS(selected_vars, "Data/raster/selected_vars.RDS")
 message("Raster-Namen: ", paste(names(env_raster_masked), collapse = ", "))
 terra::plot(env_raster_masked)
 
-
-# =============================================================================
-# Plot der 7 ausgewählten Bioklimavariablen (nach VIF-Auswahl)
-# =============================================================================
-
 # =============================================================================
 # Plot der 7 ausgewählten Bioklimavariablen (nach VIF-Auswahl) - mit Klarnamen
 # =============================================================================
