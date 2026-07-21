@@ -1,5 +1,5 @@
 # =============================================================================
-# 1 - TSS
+# 1 - TSS und AUC
 # =============================================================================
 
 # Install mecofun from Gitlab using the devtools package:
@@ -73,7 +73,7 @@ eval_one_niche <- function(model_obj, test_df, env, thresh.method = "ObsPrev") {
   # Kontrolle: passen die Spaltennamen zu den Modell-Praediktoren?
   # (bei Nichtuebereinstimmung wirft predict() weiter unten einen Fehler)
   newdat <- cbind(test_df, env_vals)
-  v
+  
   # Der eigentliche glm-Fit liegt unter $model, nicht im Objekt selbst
   glm_fit <- model_obj$model
   
@@ -112,10 +112,53 @@ print(results_df)
 
 
 # -----------------------------------------------------------------------------
-# 5 - Speichern und Plot
+# 5 - Bootstrap-Konfidenzintervalle
 # -----------------------------------------------------------------------------
 
-write.csv(results_df, "tss_nischenbreiten_vergleich.csv", row.names = FALSE)
+bootstrap_tss <- function(obs, pred, thresh.method = "ObsPrev", n_boot = 1000) {
+  n <- length(obs)
+  tss_boot <- numeric(n_boot)
+  
+  for (i in seq_len(n_boot)) {
+    idx <- sample(seq_len(n), size = n, replace = TRUE)
+    obs_b  <- obs[idx]
+    pred_b <- pred[idx]
+    
+    # Falls ein Bootstrap-Sample zufaellig keine Presence oder keine Absence
+    # enthaelt, evalSDM()/optimal.thresholds() schlaegt fehl - dann skippen
+    if (length(unique(obs_b)) < 2) next
+    
+    res <- tryCatch(
+      evalSDM(observation = obs_b, predictions = pred_b, thresh.method = thresh.method),
+      error = function(e) NULL
+    )
+    tss_boot[i] <- if (!is.null(res)) res$TSS else NA
+  }
+  
+  quantile(tss_boot, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
+}
+
+# Anwendung pro Nischenbreite (obs/pred aus deiner eval_one_niche-Logik heraus extrahiert):
+tss_ci <- lapply(names(models), function(nm) {
+  test_df <- test_data[[nm]]
+  test_df <- test_df[test_df$split == "test", ]
+  env_vals <- terra::extract(env, test_df[, c("x", "y")])[, -1, drop = FALSE]
+  newdat <- cbind(test_df, env_vals)
+  pred <- predict(models[[nm]]$model, newdata = newdat, type = "response")
+  ok <- !is.na(pred)
+  
+  bootstrap_tss(newdat$presence[ok], pred[ok])
+})
+names(tss_ci) <- names(models)
+print(tss_ci)
+
+
+
+# -----------------------------------------------------------------------------
+# 6 - Speichern und Plot
+# -----------------------------------------------------------------------------
+
+write.csv(results_df, "results/glm_auc_tss.csv", row.names = FALSE)
 
 plot(seq_along(results_df$niche_breadth), results_df$TSS,
      xaxt = "n", type = "b", pch = 19,
@@ -123,6 +166,41 @@ plot(seq_along(results_df$niche_breadth), results_df$TSS,
      main = "TSS vs. Nischenbreite (knndm-Testdaten)")
 axis(1, at = seq_along(results_df$niche_breadth), labels = results_df$niche_breadth)
 
+plot(seq_along(results_df$niche_breadth), results_df$AUC,
+     xaxt = "n", type = "b", pch = 19,
+     xlab = "Nischenbreite", ylab = "AUC",
+     main = "AUC vs. Nischenbreite (knndm-Testdaten)")
+axis(1, at = seq_along(results_df$niche_breadth), labels = results_df$niche_breadth)
 
 
+
+
+
+
+
+
+
+
+
+
+
+# -----------------------------------------------------------------------------
+# Presence-Zahlen pro Nischenbreite: Training und Test im Ueberblick
+# -----------------------------------------------------------------------------
+
+presence_overview <- data.frame(
+  niche_breadth = names(models),
+  n_presence_train = sapply(models, function(m) sum(m$model$model[, 1] == 1)),
+  n_absence_train  = sapply(models, function(m) sum(m$model$model[, 1] == 0)),
+  n_presence_test  = sapply(test_data, function(d) sum(d$presence[d$split == "test"] == 1)),
+  n_absence_test   = sapply(test_data, function(d) sum(d$presence[d$split == "test"] == 0))
+)
+
+presence_overview$prevalence_train <- presence_overview$n_presence_train /
+  (presence_overview$n_presence_train + presence_overview$n_absence_train)
+
+presence_overview$prevalence_test <- presence_overview$n_presence_test /
+  (presence_overview$n_presence_test + presence_overview$n_absence_test)
+
+print(presence_overview)
 
