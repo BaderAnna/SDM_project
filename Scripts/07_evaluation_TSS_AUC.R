@@ -1,5 +1,5 @@
 # =============================================================================
-# 1 - TSS und AUC
+# TSS und AUC
 # =============================================================================
 
 # Install mecofun from Gitlab using the devtools package:
@@ -13,10 +13,6 @@ paste("Zurell, D. (2024).",
       "mecofun: useful functions for macroecology and species distribution modelling",
       "version 0.7.1. University of Potsdam, Potsdam.",
       "https://gitup.uni-potsdam.de/macroecology/mecofun")
-
-
-library(mecofun)
-
 
 
 
@@ -203,4 +199,8 @@ presence_overview$prevalence_test <- presence_overview$n_presence_test /
   (presence_overview$n_presence_test + presence_overview$n_absence_test)
 
 print(presence_overview)
+
+
+
+
 
