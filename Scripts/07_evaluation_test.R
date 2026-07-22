@@ -9,6 +9,7 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(maxnet)
+library(ranger)
 
 # -----------------------------------------------------------------------------
 # 1 - Umweltraster laden
@@ -64,7 +65,7 @@ models_rf <- list(
 models_all <- list(
   GLM = models_glm,
   Maxent = models_maxent,
-  BRT = models_brt
+  BRT = models_brt,
   RF  = models_rf
 )
 
@@ -86,33 +87,58 @@ predict_model <- function(model_obj, newdata, model_type) {
   
   switch(model_type,
          
-         # GLM / GAM: Modell liegt unter $model
+         # GLM: einzelnes Modell unter $model
          "GLM" = predict(model_obj$model,
-                         newdata  = newdata,
-                         type     = "response"),
+                         newdata = newdata,
+                         type    = "response"),
          
-         "Maxent" = predict(model_obj$model,
-                         newdata  = newdata,
-                         type     = "response"),
-         
-         # BRT (gbm): Modell liegt unter $model, braucht n.trees
-         "BRT" = {
-           gbm_fit <- model_obj$model
-           gbm::predict.gbm(gbm_fit,
-                            newdata     = newdata,
-                            n.trees     = gbm_fit$n.trees,
-                            type        = "response")
-         },
-         
-         # RF (randomForest): Wahrscheinlichkeit der Klasse "1"
-         "RF" = {
-           rf_fit <- model_obj$model
-           as.numeric(
-             predict(rf_fit, newdata = newdata, type = "prob")[, "1"]
+         # Maxent: einzelnes Modell, aber Daten müssen skaliert werden!
+         "Maxent" = {
+           # ✅ Skalierungsparameter aus dem Modellobjekt
+           scale_center <- model_obj$scale_center
+           scale_scale  <- model_obj$scale_scale
+           env_vars     <- names(scale_center)
+           
+           # ✅ Testdaten skalieren
+           newdata_scaled <- newdata
+           newdata_scaled[, env_vars] <- scale(
+             newdata[, env_vars],
+             center = scale_center,
+             scale  = scale_scale
            )
+           
+           # ✅ Vorhersage mit skalierten Daten
+           as.vector(predict(model_obj$model,
+                             newdata = newdata_scaled,
+                             type    = "cloglog"))
          },
          
-         # Fallback: direktes predict() ohne Wrapper
+         # BRT (gbm): Ensemble aus $models
+         "BRT" = {
+           gbm_models <- model_obj$models
+           n_trees    <- gbm_models[[1]]$n.trees
+           preds <- sapply(gbm_models, function(gbm_fit) {
+             gbm::predict.gbm(gbm_fit,
+                              newdata = newdata,
+                              n.trees = n_trees,
+                              type    = "response")
+           })
+           rowMeans(preds)
+         },
+         
+         # RF (ranger): Ensemble aus $models
+         # ✅ Fix: Spalte "1" (Präsenz) verwenden
+         "RF" = {
+           ranger_models <- model_obj$models
+           preds <- sapply(ranger_models, function(rf_fit) {
+             pred_list <- predict(rf_fit, data = newdata, type = "response")
+             # ✅ Spalte "1" = Präsenz-Wahrscheinlichkeit
+             pred_list$predictions[, "1"]
+           })
+           rowMeans(preds)
+         },
+         
+         # Fallback
          predict(model_obj, newdata = newdata, type = "response")
   )
 }
@@ -123,10 +149,11 @@ predict_model <- function(model_obj, newdata, model_type) {
 
 eval_one_niche <- function(model_obj, test_df, env,
                            model_type    = "GLM",
-                           thresh.method = "ObsPrev") {
+                           thresh.method = "ObsPrev",
+                           debug         = FALSE) {
   
   # Nur Testzeilen
-  test_df  <- test_df[test_df$split == "test", ]
+  test_df <- test_df[test_df$split == "test", ]
   
   # Umweltwerte extrahieren
   env_vals <- terra::extract(env, test_df[, c("x", "y")])[, -1, drop = FALSE]
@@ -140,6 +167,21 @@ eval_one_niche <- function(model_obj, test_df, env,
       rep(NA_real_, nrow(newdat))
     }
   )
+  
+  # ✅ Sicherstellen, dass pred gleich lang wie newdat ist
+  # Falls predict() intern NA-Zeilen entfernt (z.B. maxnet), auffüllen
+  if (length(pred) != nrow(newdat)) {
+    warning(sprintf(
+      "[%s] pred (%d) kürzer als newdat (%d) – fülle fehlende Zeilen mit NA auf.",
+      model_type, length(pred), nrow(newdat)
+    ))
+    # Finde NA-Zeilen in newdat (Umweltvariablen)
+    env_cols <- names(env_vals)
+    na_rows  <- apply(newdat[, env_cols, drop = FALSE], 1, anyNA)
+    pred_full <- rep(NA_real_, nrow(newdat))
+    pred_full[!na_rows] <- pred
+    pred <- pred_full
+  }
   
   # NA-Zeilen entfernen
   ok <- !is.na(pred)
@@ -156,8 +198,21 @@ eval_one_niche <- function(model_obj, test_df, env,
                       true_prevalence = NA, n_test = sum(ok)))
   }
   
-  eval_res <- evalSDM(observation = newdat$presence[ok],
-                      predictions = pred[ok],
+  # Reine Vektoren sicherstellen
+  observation <- as.vector(newdat$presence[ok])
+  predictions <- as.vector(pred[ok])
+  
+  # Debug
+  if (debug) {
+    cat("nrow(newdat):", nrow(newdat), "\n")
+    cat("length(pred):", length(pred), "\n")
+    cat("sum(ok):", sum(ok), "\n")
+    cat("length(observation):", length(observation), "\n")
+    cat("length(predictions):", length(predictions), "\n")
+  }
+  
+  eval_res <- evalSDM(observation = observation,
+                      predictions = predictions,
                       thresh.method = thresh.method)
   
   eval_res$true_prevalence <- mean(newdat$presence[ok])
@@ -189,12 +244,13 @@ bootstrap_tss <- function(obs, pred, thresh.method = "ObsPrev", n_boot = 1000) {
   quantile(tss_boot, probs = c(0.025, 0.5, 0.975), na.rm = TRUE)
 }
 
+
 # -----------------------------------------------------------------------------
 # 6 - Hauptschleife: alle Modelltypen × alle Nischenbreiten
 # -----------------------------------------------------------------------------
 
-all_results <- list()   # Evaluierungsmetriken
-all_ci      <- list()   # Bootstrap-KI
+all_results <- list()
+all_ci      <- list()
 
 for (mtype in names(models_all)) {
   
@@ -202,36 +258,47 @@ for (mtype in names(models_all)) {
   cat("Evaluiere Modelltyp:", mtype, "\n")
   cat("==============================\n")
   
-  models_mtype <- models_all[[mtype]]
-  
-  # --- Evaluierungsmetriken --------------------------------------------------
-  res_list <- Map(
-    function(mod, tdat) eval_one_niche(mod, tdat, env,
-                                       model_type    = mtype,
-                                       thresh.method = "ObsPrev"),
-    models_mtype, test_data
-  )
-  
-  res_df <- do.call(rbind, res_list)
-  res_df$niche_breadth <- niche_names
-  res_df$model_type    <- mtype
-  rownames(res_df)     <- NULL
-  all_results[[mtype]] <- res_df
-  
-  # --- Bootstrap-KI ----------------------------------------------------------
-  ci_list <- lapply(niche_names, function(nm) {
-    test_df  <- test_data[[nm]][test_data[[nm]]$split == "test", ]
-    env_vals <- terra::extract(env, test_df[, c("x", "y")])[, -1, drop = FALSE]
-    newdat   <- cbind(test_df, env_vals)
-    pred     <- tryCatch(
-      predict_model(models_mtype[[nm]], newdat, mtype),
-      error = function(e) rep(NA_real_, nrow(newdat))
+  local({
+    mtype_local  <- mtype
+    models_mtype <- models_all[[mtype_local]]
+    
+    res_list <- Map(
+      function(mod, tdat) eval_one_niche(mod, tdat, env,
+                                         model_type    = mtype_local,
+                                         thresh.method = "ObsPrev",
+                                         debug         = FALSE),
+      models_mtype, test_data
     )
-    ok <- !is.na(pred)
-    bootstrap_tss(newdat$presence[ok], pred[ok])
+    
+    res_df <- do.call(rbind, res_list)
+    res_df$niche_breadth <- niche_names
+    res_df$model_type    <- mtype_local
+    rownames(res_df)     <- NULL
+    all_results[[mtype_local]] <<- res_df
+    
+    ci_list <- lapply(niche_names, function(nm) {
+      test_df  <- test_data[[nm]][test_data[[nm]]$split == "test", ]
+      env_vals <- terra::extract(env, test_df[, c("x", "y")])[, -1, drop = FALSE]
+      newdat   <- cbind(test_df, env_vals)
+      pred     <- tryCatch(
+        predict_model(models_mtype[[nm]], newdat, mtype_local),
+        error = function(e) rep(NA_real_, nrow(newdat))
+      )
+      # ✅ Auch hier: pred auffüllen falls nötig
+      if (length(pred) != nrow(newdat)) {
+        env_cols  <- names(env_vals)
+        na_rows   <- apply(newdat[, env_cols, drop = FALSE], 1, anyNA)
+        pred_full <- rep(NA_real_, nrow(newdat))
+        pred_full[!na_rows] <- pred
+        pred <- pred_full
+      }
+      ok <- !is.na(pred)
+      bootstrap_tss(as.vector(newdat$presence[ok]),
+                    as.vector(pred[ok]))
+    })
+    names(ci_list)        <- niche_names
+    all_ci[[mtype_local]] <<- ci_list
   })
-  names(ci_list)    <- niche_names
-  all_ci[[mtype]]   <- ci_list
 }
 
 # -----------------------------------------------------------------------------
@@ -400,3 +467,4 @@ presence_overview$prevalence_test <-
   (presence_overview$n_presence_test + presence_overview$n_absence_test)
 
 print(presence_overview)
+
