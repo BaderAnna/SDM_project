@@ -1,20 +1,5 @@
 # =============================================================================
-# Berechnung: MAE + Bias (vs. wahre Suitability der virtuellen Spezies)
-# =============================================================================
-#
-# obs  = wahre, kontinuierliche Suitability an Testkoordinaten
-#        (aus virtualspecies::generateSpFromFun(), NICHT die binaere P/A)
-# pred = kontinuierliche Modellvorhersage an denselben Koordinaten
-#
-# MAE  = mean(|obs - pred|)     -> je kleiner, desto besser (0 = perfekt)
-# Bias = mean(pred - obs)       -> positiv = Ueberschaetzung, negativ = Unterschaetzung
-#
-# MAE und Bias nutzen exakt dieselbe Vorhersage + dieselbe wahre Suitability,
-# daher werden sie hier in einem Durchgang berechnet (keine doppelte
-# Extraktion/Vorhersage noetig).
-#
-# Output: results/mae_bias_true_suitability.csv
-#         -> wird von plot_mae_bias_true_suitability.R eingelesen
+# 7.1 Model evaluation MAE + Bias (vs. True Suitability of VS)
 # =============================================================================
 
 library(Metrics)
@@ -22,7 +7,7 @@ library(terra)
 library(dplyr)
 
 # -----------------------------------------------------------------------------
-# 1 - Daten laden (an eure Struktur anpassen!)
+# 1 - Read data
 # -----------------------------------------------------------------------------
 env <- terra::rast("Data/raster/env_raster_masked.tif")
 
@@ -74,7 +59,7 @@ niche_names <- c("narrow", "low_mid", "high_mid", "broad")
 
 
 # -----------------------------------------------------------------------------
-# 2 - Vorhersagefunktion je Modelltyp
+# 2 - Predict function
 # -----------------------------------------------------------------------------
 
 predict_model <- function(model_obj, newdata, model_type) {
@@ -97,13 +82,12 @@ predict_model <- function(model_obj, newdata, model_type) {
            pred_raw <- predict(model_obj$model,
                                newdata = newdata_scaled,
                                type    = "cloglog")
-           
-           # Sicherheitscheck: immer Vektor der Länge nrow(newdata) zurückgeben
+
            pred_vec <- as.vector(pred_raw)
            
            if (length(pred_vec) != nrow(newdata)) {
              warning(sprintf(
-               "[Maxent] Unerwartete Länge: %d statt %d → nehme erste Spalte",
+               "[Maxent] Unexpected length: %d instead of %d → using first column",
                length(pred_vec), nrow(newdata)
              ))
              pred_vec <- as.vector(pred_raw[, 1])
@@ -130,14 +114,13 @@ predict_model <- function(model_obj, newdata, model_type) {
            })
            rowMeans(preds)
          },
-         
-         # Fallback
+
          predict(model_obj, newdata = newdata, type = "response")
   )
 }
 
 # -----------------------------------------------------------------------------
-# 3 - MAE + Bias fuer eine Modell-Nischen-Kombination
+# 3 - Evaluation function
 # -----------------------------------------------------------------------------
 
 calc_mae_bias <- function(model_obj, test_df, env, true_suitability_raster, model_type) {
@@ -146,37 +129,36 @@ calc_mae_bias <- function(model_obj, test_df, env, true_suitability_raster, mode
   env_vals <- terra::extract(env, test_df[, c("x", "y")])[, -1, drop = FALSE]
   newdat   <- cbind(test_df, env_vals)
   
-  # NA-Zeilen in Umweltvariablen VOR predict() entfernen
-  # → stellt sicher dass pred und true_suit immer gleich lang sind
+  # Remove NA rows in environmental variables before predict()
+  # → ensures that pred and true_suit always have the same length
   env_vars   <- names(env)
   complete   <- complete.cases(newdat[, env_vars])
   
   if (any(!complete)) {
     warning(sprintf(
-      "[%s] %d Zeilen mit NA in Umweltvariablen entfernt.",
+      "[%s] %d Rows with NAs in environmental variables removed.",
       model_type, sum(!complete)
     ))
   }
   
   newdat_clean <- newdat[complete, ]
   
-  # Vorhersage auf bereinigten Daten
+  # Prediction based on clean data
   pred <- tryCatch(
     predict_model(model_obj, newdat_clean, model_type),
     error = function(e) {
-      warning(sprintf("[%s] predict() fehlgeschlagen: %s", model_type, e$message))
+      warning(sprintf("[%s] predict() failed: %s", model_type, e$message))
       rep(NA_real_, nrow(newdat_clean))
     }
   )
   
-  # Wahre Suitability auf denselben bereinigten Koordinaten
+  # True suitability on the same adjusted coordinates
   true_suit <- terra::extract(true_suitability_raster,
                               newdat_clean[, c("x", "y")])[, -1, drop = TRUE]
   
-  # Längen sollten jetzt übereinstimmen - zur Sicherheit prüfen
   if (length(pred) != length(true_suit)) {
     warning(sprintf(
-      "[%s] Längen stimmen immer noch nicht überein: pred = %d, true_suit = %d",
+      "[%s] Lengths still don't match.: pred = %d, true_suit = %d",
       model_type, length(pred), length(true_suit)
     ))
     n_min     <- min(length(pred), length(true_suit))
@@ -187,7 +169,7 @@ calc_mae_bias <- function(model_obj, test_df, env, true_suitability_raster, mode
   ok  <- !is.na(pred) & !is.na(true_suit)
   
   if (sum(ok) == 0) {
-    warning(sprintf("[%s] Keine gültigen Wertepaare.", model_type))
+    warning(sprintf("[%s] No valid value pairs.", model_type))
     return(data.frame(MAE = NA, Bias = NA, n_test = 0L))
   }
   
@@ -203,7 +185,7 @@ calc_mae_bias <- function(model_obj, test_df, env, true_suitability_raster, mode
 
 
 # -----------------------------------------------------------------------------
-# 4 - Alle Modelltypen x Nischenbreiten durchrechnen
+# 4 - Main loop
 # -----------------------------------------------------------------------------
 
 metrics_combined <- lapply(names(models_all), function(mtype) {
@@ -229,7 +211,7 @@ metrics_combined <- lapply(names(models_all), function(mtype) {
 print(metrics_combined)
 
 # -----------------------------------------------------------------------------
-# 5 - Speichern
+# 5 - Save results
 # -----------------------------------------------------------------------------
 
 dir.create("results", showWarnings = FALSE)

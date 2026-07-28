@@ -1,7 +1,5 @@
 # =============================================================================
-# TEIL 1: Modellauswertung - GLM, Maxent, BRT, RF x 4 Nischenbreiten
-# Ergebnis: CSV-Dateien in results/ - fuer das Plotting (Teil 2) reicht danach
-# das Einlesen dieser CSVs, ohne alles neu zu berechnen.
+# 7.1 Model evaluation TSS + AUC
 # =============================================================================
 
 library(mecofun)
@@ -15,13 +13,13 @@ library(ranger)
 dir.create("results", showWarnings = FALSE)
 
 # -----------------------------------------------------------------------------
-# 1 - Umweltraster laden
+# 1 - Read environmental raster
 # -----------------------------------------------------------------------------
 env <- terra::rast("Data/raster/env_raster_masked.tif")
 print(names(env))
 
 # -----------------------------------------------------------------------------
-# 2 - Modelle und Testdaten laden
+# 2 - Load models and test data
 # -----------------------------------------------------------------------------
 niche_names <- c("narrow", "low_mid", "high_mid", "broad")
 
@@ -64,7 +62,7 @@ test_data <- list(
 )
 
 # -----------------------------------------------------------------------------
-# 3 - Generische Predict-Funktion
+# 3 - Predict function
 # -----------------------------------------------------------------------------
 predict_model <- function(model_obj, newdata, model_type) {
   switch(model_type,
@@ -85,9 +83,6 @@ predict_model <- function(model_obj, newdata, model_type) {
          },
          
          "BRT" = {
-           # Hinweis: gbm.perf(method="cv") wurde geprueft - best_iter lag bei allen
-           # 10 Ensemble-Mitgliedern nahe an n.trees (1984-2000 von 2000) -> kein
-           # Overfitting, daher hier die einfache/schnelle Variante mit voller Baumanzahl.
            gbm_models <- model_obj$models
            n_trees    <- gbm_models[[1]]$n.trees
            preds <- sapply(gbm_models, function(gbm_fit) {
@@ -109,7 +104,7 @@ predict_model <- function(model_obj, newdata, model_type) {
 }
 
 # -----------------------------------------------------------------------------
-# 4 - Evaluierungsfunktion
+# 4 - Evaluation function
 # -----------------------------------------------------------------------------
 eval_one_niche <- function(model_obj, test_df, env,
                            model_type = "GLM", thresh.method = "ObsPrev") {
@@ -121,12 +116,12 @@ eval_one_niche <- function(model_obj, test_df, env,
   pred <- tryCatch(
     predict_model(model_obj, newdat, model_type),
     error = function(e) {
-      warning(sprintf("[%s] predict() fehlgeschlagen: %s", model_type, e$message))
+      warning(sprintf("[%s] predict() failed: %s", model_type, e$message))
       rep(NA_real_, nrow(newdat))
     }
   )
   
-  # Falls predict() intern Zeilen entfernt hat: mit NA auffuellen
+  # If rows of predict() were deleted internally: fill with NA
   if (length(pred) != nrow(newdat)) {
     env_cols  <- names(env_vals)
     na_rows   <- apply(newdat[, env_cols, drop = FALSE], 1, anyNA)
@@ -137,13 +132,12 @@ eval_one_niche <- function(model_obj, test_df, env,
   
   ok <- !is.na(pred)
   if (any(!ok)) {
-    warning(sprintf("[%s] %d von %d Testpunkten ausgeschlossen (NA).",
+    warning(sprintf("[%s] %d of %d test points excluded (NA).",
                     model_type, sum(!ok), length(ok)))
   }
   
   if (length(unique(newdat$presence[ok])) < 2) {
-    warning(sprintf("[%s] Nur eine Klasse im Testdatensatz - Evaluation übersprungen.", model_type))
-    # Gleiche Spalten wie evalSDM()-Output (wichtig fuer spaeteres rbind!)
+    warning(sprintf("[%s] Only one class in the test dataset – evaluation skipped.", model_type))
     return(data.frame(AUC = NA, TSS = NA, Kappa = NA, Sens = NA, Spec = NA,
                       PCC = NA, D2 = NA, thresh = NA,
                       true_prevalence = NA, n_test = sum(ok)))
@@ -159,7 +153,7 @@ eval_one_niche <- function(model_obj, test_df, env,
 }
 
 # -----------------------------------------------------------------------------
-# 5 - Bootstrap-KI fuer TSS
+# 5 - Bootstrap-CI of TSS
 # -----------------------------------------------------------------------------
 bootstrap_tss <- function(obs, pred, thresh.method = "ObsPrev", n_boot = 1000) {
   n        <- length(obs)
@@ -178,14 +172,14 @@ bootstrap_tss <- function(obs, pred, thresh.method = "ObsPrev", n_boot = 1000) {
 }
 
 # -----------------------------------------------------------------------------
-# 6 - Hauptschleife
+# 6 - Main loop
 # -----------------------------------------------------------------------------
 all_results <- list()
 all_ci      <- list()
 
 for (mtype in names(models_all)) {
   
-  cat("\n=== Evaluiere:", mtype, "===\n")
+  cat("\n=== Evaluate:", mtype, "===\n")
   models_mtype <- models_all[[mtype]]
   
   res_list <- Map(function(mod, tdat) eval_one_niche(mod, tdat, env, mtype, "ObsPrev"),
@@ -217,7 +211,7 @@ for (mtype in names(models_all)) {
 }
 
 # -----------------------------------------------------------------------------
-# 7 - Ergebnisse zusammenfuehren und speichern
+# 7 - Combine and save results 
 # -----------------------------------------------------------------------------
 results_combined <- dplyr::bind_rows(all_results)
 
@@ -241,5 +235,3 @@ presence_overview$prevalence_test <- presence_overview$n_presence_test /
 write.csv(results_combined,  "results/all_models_auc_tss.csv", row.names = FALSE)
 write.csv(ci_df,             "results/all_models_tss_ci.csv",  row.names = FALSE)
 write.csv(presence_overview, "results/presence_overview.csv",  row.names = FALSE)
-
-cat("\nFertig. Ergebnisse liegen in results/ - fuer die Plots reicht jetzt Teil 2.\n")
