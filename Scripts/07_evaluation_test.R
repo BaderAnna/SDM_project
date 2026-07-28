@@ -342,6 +342,9 @@ write.csv(ci_df,            "results/all_models_tss_ci.csv",  row.names = FALSE)
 # 9 - Vergleichsplots
 # -----------------------------------------------------------------------------
 
+
+
+
 # Farbpalette (automatisch skaliert mit Anzahl Modelltypen)
 n_models <- length(unique(plot_df$model_type))
 farben   <- RColorBrewer::brewer.pal(max(3, n_models), "Set1")[seq_len(n_models)]
