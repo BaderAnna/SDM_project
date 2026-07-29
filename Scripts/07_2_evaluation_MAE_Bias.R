@@ -1,5 +1,5 @@
 # =============================================================================
-# 7.1 Model evaluation MAE + Bias (vs. True Suitability of VS)
+# 7.2 Model evaluation MAE + Bias (vs. True Suitability of VS)
 # =============================================================================
 
 library(Metrics)
