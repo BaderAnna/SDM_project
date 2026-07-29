@@ -130,3 +130,4 @@ for (sp in species_list) {
   message("✓ Trainingsmodell gespeichert: glm_", sp, "_train.RDS")
 }
 
+
