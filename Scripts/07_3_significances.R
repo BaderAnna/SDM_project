@@ -11,6 +11,7 @@ library(tidyverse)
 results_combined  <- read.csv("results/all_models_auc_tss.csv")
 mae_bias_combined <- read.csv("results/mae_bias_true_suitability.csv")
 raw <- read.csv("results/raw_predictions_long.csv")
+raw_mae <- read.csv("results/raw_mae_predictions_long.csv")
 
 
 # -----------------------------------------------------------------------------
@@ -58,6 +59,7 @@ pageTest(mae_matrix, alternative = "greater")   # testet: MAE steigt mit Nischen
 
 library(pROC)
 
+#------AUC------
 # maxent
 glm_narrow    <- raw %>% filter(niche_breadth == "narrow", model_type == "GLM")
 maxent_narrow <- raw %>% filter(niche_breadth == "narrow", model_type == "Maxent")
@@ -92,62 +94,47 @@ roc.test(roc(paired$obs, paired$pred_glm, quiet = TRUE),
          roc(paired$obs, paired$pred_rf, quiet = TRUE), method = "delong")
 
 
+#------MAE------
+# maxent
+glm_narrow    <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "GLM") %>%
+  select(x, y, true_suit, pred_glm = pred)
+maxent_narrow <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "Maxent") %>%
+  select(x, y, pred_maxent = pred)
 
-library(pROC)
+paired <- glm_narrow %>% inner_join(maxent_narrow, by = c("x", "y"))
 
-paired_bootstrap_tss_diff <- function(obs, pred_A, pred_B, n_boot = 1000) {
-  n <- length(obs)
-  diffs <- numeric(n_boot)
-  for (i in seq_len(n_boot)) {
-    idx <- sample(seq_len(n), size = n, replace = TRUE)
-    if (length(unique(obs[idx])) < 2) next
-    tss_A <- evalSDM(obs[idx], pred_A[idx], thresh.method = "ObsPrev")$TSS
-    tss_B <- evalSDM(obs[idx], pred_B[idx], thresh.method = "ObsPrev")$TSS
-    diffs[i] <- tss_A - tss_B
-  }
-  p_approx <- mean(diffs <= 0, na.rm = TRUE)
-  list(diff_mean = mean(diffs, na.rm = TRUE),
-       p = 2 * min(p_approx, 1 - p_approx, na.rm = TRUE))
-}
+err_glm    <- abs(paired$true_suit - paired$pred_glm)
+err_maxent <- abs(paired$true_suit - paired$pred_maxent)
 
-h2_results <- list()
+wilcox.test(err_maxent, err_glm, paired = TRUE)
 
-for (nm in niche_names) {
-  glm_dat <- raw %>% filter(niche_breadth == nm, model_type == "GLM") %>%
-    select(x, y, obs, pred_glm = pred)
-  
-  for (mtype in c("Maxent", "BRT", "RF")) {
-    
-    other_dat <- raw %>% filter(niche_breadth == nm, model_type == mtype) %>%
-      select(x, y, pred_other = pred)
-    
-    paired <- glm_dat %>% inner_join(other_dat, by = c("x", "y"))
-    
-    # --- AUC: DeLong ---
-    roc_glm   <- roc(paired$obs, paired$pred_glm,   quiet = TRUE)
-    roc_other <- roc(paired$obs, paired$pred_other, quiet = TRUE)
-    auc_test  <- roc.test(roc_glm, roc_other, method = "delong")
-    
-    # --- TSS: gepaarter Bootstrap ---
-    tss_test <- paired_bootstrap_tss_diff(paired$obs, paired$pred_other, paired$pred_glm)
-    
-    h2_results[[paste(nm, mtype, sep = "_")]] <- data.frame(
-      niche_breadth = nm,
-      comparison    = paste(mtype, "vs GLM"),
-      AUC_glm       = as.numeric(auc(roc_glm)),
-      AUC_other     = as.numeric(auc(roc_other)),
-      p_AUC         = auc_test$p.value,
-      TSS_diff      = tss_test$diff_mean,
-      p_TSS         = tss_test$p
-    )
-  }
-}
 
-h2_df <- dplyr::bind_rows(h2_results)
-h2_df$p_AUC_adj <- p.adjust(h2_df$p_AUC, method = "holm")
-h2_df$p_TSS_adj <- p.adjust(h2_df$p_TSS, method = "holm")
+# brt
+glm_narrow    <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "GLM") %>%
+  select(x, y, true_suit, pred_glm = pred)
+brt_narrow <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "BRT") %>%
+  select(x, y, pred_brt = pred)
 
-print(h2_df)
+paired <- glm_narrow %>% inner_join(brt_narrow, by = c("x", "y"))
+
+err_glm    <- abs(paired$true_suit - paired$pred_glm)
+err_brt <- abs(paired$true_suit - paired$pred_brt)
+
+wilcox.test(err_brt, err_glm, paired = TRUE)
+
+
+# rf
+glm_narrow    <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "GLM") %>%
+  select(x, y, true_suit, pred_glm = pred)
+rf_narrow <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "RF") %>%
+  select(x, y, pred_rf = pred)
+
+paired <- glm_narrow %>% inner_join(rf_narrow, by = c("x", "y"))
+
+err_glm    <- abs(paired$true_suit - paired$pred_glm)
+err_rf <- abs(paired$true_suit - paired$pred_rf)
+
+wilcox.test(err_rf, err_glm, paired = TRUE)
 
 
 # -----------------------------------------------------------------------------
@@ -155,3 +142,82 @@ print(h2_df)
 #         with Maxent reaching the highest performance
 # -----------------------------------------------------------------------------
 
+#------AUC Maxent------
+# brt
+maxent_narrow    <- raw %>% filter(niche_breadth == "narrow", model_type == "Maxent")
+brt_narrow <- raw %>% filter(niche_breadth == "narrow", model_type == "BRT")
+
+paired <- maxent_narrow %>%
+  select(x, y, obs, pred_maxent = pred) %>%
+  inner_join(brt_narrow %>% select(x, y, pred_brt = pred), by = c("x", "y"))
+
+roc.test(roc(paired$obs, paired$pred_maxent, quiet = TRUE),
+         roc(paired$obs, paired$pred_brt, quiet = TRUE), method = "delong")
+
+# rf
+maxent_narrow    <- raw %>% filter(niche_breadth == "narrow", model_type == "Maxent")
+rf_narrow <- raw %>% filter(niche_breadth == "narrow", model_type == "RF")
+
+paired <- maxent_narrow %>%
+  select(x, y, obs, pred_maxent = pred) %>%
+  inner_join(rf_narrow %>% select(x, y, pred_rf = pred), by = c("x", "y"))
+
+roc.test(roc(paired$obs, paired$pred_maxent, quiet = TRUE),
+         roc(paired$obs, paired$pred_rf, quiet = TRUE), method = "delong")
+
+
+#------AUC RF------
+# brt
+rf_narrow    <- raw %>% filter(niche_breadth == "narrow", model_type == "RF")
+brt_narrow <- raw %>% filter(niche_breadth == "narrow", model_type == "BRT")
+
+paired <- rf_narrow %>%
+  select(x, y, obs, pred_rf = pred) %>%
+  inner_join(brt_narrow %>% select(x, y, pred_brt = pred), by = c("x", "y"))
+
+roc.test(roc(paired$obs, paired$pred_rf, quiet = TRUE),
+         roc(paired$obs, paired$pred_brt, quiet = TRUE), method = "delong")
+
+
+#------MAE Maxent------
+# brt
+maxent_narrow    <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "Maxent") %>%
+  select(x, y, true_suit, pred_maxent = pred)
+brt_narrow <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "BRT") %>%
+  select(x, y, pred_brt = pred)
+
+paired <- maxent_narrow %>% inner_join(brt_narrow, by = c("x", "y"))
+
+err_maxent   <- abs(paired$true_suit - paired$pred_maxent)
+err_brt <- abs(paired$true_suit - paired$pred_brt)
+
+wilcox.test(err_brt, err_maxent, paired = TRUE)
+
+
+# rf
+maxent_narrow    <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "Maxent") %>%
+  select(x, y, true_suit, pred_maxent = pred)
+rf_narrow <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "RF") %>%
+  select(x, y, pred_rf = pred)
+
+paired <- maxent_narrow %>% inner_join(rf_narrow, by = c("x", "y"))
+
+err_maxent    <- abs(paired$true_suit - paired$pred_maxent)
+err_rf <- abs(paired$true_suit - paired$pred_rf)
+
+wilcox.test(err_rf, err_maxent, paired = TRUE)
+
+
+#------MAE RF------
+# brt
+rf_narrow    <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "RF") %>%
+  select(x, y, true_suit, pred_rf = pred)
+brt_narrow <- raw_mae %>% filter(niche_breadth == "narrow", model_type == "BRT") %>%
+  select(x, y, pred_brt = pred)
+
+paired <- rf_narrow %>% inner_join(brt_narrow, by = c("x", "y"))
+
+err_rf   <- abs(paired$true_suit - paired$pred_rf)
+err_brt <- abs(paired$true_suit - paired$pred_brt)
+
+wilcox.test(err_brt, err_rf, paired = TRUE)

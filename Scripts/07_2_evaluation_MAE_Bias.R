@@ -5,6 +5,8 @@
 library(Metrics)
 library(terra)
 library(dplyr)
+library(maxnet)
+library(ranger)
 
 # -----------------------------------------------------------------------------
 # 1 - Read data
@@ -123,7 +125,7 @@ predict_model <- function(model_obj, newdata, model_type) {
 # 3 - Evaluation function
 # -----------------------------------------------------------------------------
 
-calc_mae_bias <- function(model_obj, test_df, env, true_suitability_raster, model_type) {
+calc_mae_bias <- function(model_obj, test_df, env, true_suitability_raster, model_type, niche_breadth_name = NA) {
   
   test_df  <- test_df[test_df$split == "test", ]
   env_vals <- terra::extract(env, test_df[, c("x", "y")])[, -1, drop = FALSE]
@@ -170,16 +172,34 @@ calc_mae_bias <- function(model_obj, test_df, env, true_suitability_raster, mode
   
   if (sum(ok) == 0) {
     warning(sprintf("[%s] No valid value pairs.", model_type))
-    return(data.frame(MAE = NA, Bias = NA, n_test = 0L))
+    return(list(
+      summary = data.frame(MAE = NA, Bias = NA, n_test = 0L),
+      raw     = data.frame(niche_breadth = character(0), model_type = character(0),
+                           x = numeric(0), y = numeric(0),
+                           pred = numeric(0), true_suit = numeric(0))
+    ))
   }
   
   obs <- true_suit[ok]
   prd <- pred[ok]
   
-  data.frame(
-    MAE    = Metrics::mae(actual = obs, predicted = prd),
-    Bias   = Metrics::bias(actual = obs, predicted = prd),
-    n_test = sum(ok)
+  raw_df <- data.frame(
+    niche_breadth = niche_breadth_name,
+    model_type    = model_type,
+    x             = newdat_clean$x[ok],
+    y             = newdat_clean$y[ok],
+    pred          = prd,
+    true_suit     = obs
+  )
+  
+  # WICHTIG: als Liste zurueckgeben, sonst geht raw_df verloren!
+  list(
+    summary = data.frame(
+      MAE    = Metrics::mae(actual = obs, predicted = prd),
+      Bias   = Metrics::bias(actual = obs, predicted = prd),
+      n_test = sum(ok)
+    ),
+    raw = raw_df
   )
 }
 
@@ -210,9 +230,49 @@ metrics_combined <- lapply(names(models_all), function(mtype) {
 
 print(metrics_combined)
 
+#------------------------------------------------------------------------------
+
+all_summary <- list()
+all_raw     <- list()
+
+for (mtype in names(models_all)) {
+  for (nm in niche_names) {
+    
+    res <- tryCatch(
+      calc_mae_bias(
+        model_obj               = models_all[[mtype]][[nm]],
+        test_df                 = test_data[[nm]],
+        env                     = env,
+        true_suitability_raster = true_suitability_rasters[[nm]],
+        model_type              = mtype,
+        niche_breadth_name      = nm
+      ),
+      error = function(e) {
+        message(sprintf("FEHLER bei [%s / %s]: %s", mtype, nm, e$message))
+        NULL
+      }
+    )
+    
+    if (is.null(res)) next
+    
+    summary_row <- res$summary
+    summary_row$niche_breadth <- nm
+    summary_row$model_type    <- mtype
+    
+    all_summary[[paste(mtype, nm, sep = "_")]] <- summary_row
+    all_raw[[paste(mtype, nm, sep = "_")]]      <- res$raw
+  }
+}
+
+raw_mae_long <- dplyr::bind_rows(all_raw)
+
+print(metrics_combined)
+
+
 # -----------------------------------------------------------------------------
 # 5 - Save results
 # -----------------------------------------------------------------------------
 
 dir.create("results", showWarnings = FALSE)
 write.csv(metrics_combined, "results/mae_bias_true_suitability.csv", row.names = FALSE)
+write.csv(raw_mae_long,     "results/raw_mae_predictions_long.csv",  row.names = FALSE)
