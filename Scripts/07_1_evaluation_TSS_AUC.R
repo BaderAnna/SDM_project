@@ -176,6 +176,7 @@ bootstrap_tss <- function(obs, pred, thresh.method = "ObsPrev", n_boot = 1000) {
 # -----------------------------------------------------------------------------
 all_results <- list()
 all_ci      <- list()
+raw_long <- list()
 
 for (mtype in names(models_all)) {
   
@@ -204,6 +205,16 @@ for (mtype in names(models_all)) {
       pred <- pred_full
     }
     ok <- !is.na(pred)
+    
+    raw_long[[paste(mtype, nm, sep = "_")]] <<- data.frame(
+      niche_breadth = nm,
+      model_type    = mtype,
+      x             = newdat$x[ok],
+      y             = newdat$y[ok],
+      obs           = newdat$presence[ok],
+      pred          = pred[ok]
+    )
+    
     bootstrap_tss(newdat$presence[ok], pred[ok])
   })
   names(ci_list) <- niche_names
@@ -232,6 +243,9 @@ presence_overview <- data.frame(
 presence_overview$prevalence_test <- presence_overview$n_presence_test /
   (presence_overview$n_presence_test + presence_overview$n_absence_test)
 
+raw_long_df <- dplyr::bind_rows(raw_long)
+
 write.csv(results_combined,  "results/all_models_auc_tss.csv", row.names = FALSE)
 write.csv(ci_df,             "results/all_models_tss_ci.csv",  row.names = FALSE)
 write.csv(presence_overview, "results/presence_overview.csv",  row.names = FALSE)
+write.csv(raw_long_df,      "results/raw_predictions_long.csv", row.names = FALSE)
