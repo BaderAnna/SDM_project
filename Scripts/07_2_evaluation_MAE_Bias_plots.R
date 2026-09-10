@@ -11,7 +11,7 @@ library(dplyr)
 # -----------------------------------------------------------------------------
 
 niche_names  <- c("narrow", "low_mid", "high_mid", "broad")
-niche_labels <- c("Narrow", "Low", "High", "Broad")
+niche_labels <- c("Narrow", "Low-mid", "High-mid", "Broad")
 model_order  <- c("GLM", "Maxent", "BRT", "RF")
 
 metrics_combined <- read.csv("results/mae_bias_true_suitability.csv") %>%
