@@ -49,9 +49,9 @@ predict_model <- function(model_obj, newdata, model_type) {
 # 2 - Kernfunktion: MAE + Bias für eine Modell-Nischen-Kombination
 # -----------------------------------------------------------------------------
 # Metrics::mae()  = mean(|obs - pred|)   → mittlerer absoluter Fehler
-# Metrics::bias() = mean(pred - obs)     → systematische Über-/Unterschätzung
-#                   positiv = Modell überschätzt im Schnitt
-#                   negativ = Modell unterschätzt im Schnitt
+# Metrics::bias() = mean(actual - predicted) = mean(obs - pred)
+#                   positive = model underestimates (obs > pred)
+#                   negative = model overestimates (obs < pred)
 # -----------------------------------------------------------------------------
 
 calc_mae_bias <- function(model_obj, test_df, env,
