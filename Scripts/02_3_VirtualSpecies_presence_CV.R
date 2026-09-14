@@ -1,6 +1,6 @@
 # =============================================================================
-# DATEN-SPLITTING MIT kNNDM (80/20)
-# kNNDM nur auf Presence Points
+# DATA SPLITTING WITH kNNDM (80/20)
+# kNNDM only on presence points
 # =============================================================================
 
 library(terra)
@@ -8,7 +8,7 @@ library(sf)
 library(CAST)
 
 # =============================================================================
-# 1. Funktion: kNNDM-basiertes Split
+# 1. Function: kNNDM-based split
 # =============================================================================
 
 split_data_knndm <- function(sampling, species_PA,
@@ -16,21 +16,21 @@ split_data_knndm <- function(sampling, species_PA,
                              n_true_abs  = 1000) {
   
   # -------------------------------------------------------------------
-  # 1. Presence Points
+  # 1. Presence points
   # -------------------------------------------------------------------
   pres <- sampling$po$sample.points[
     sampling$po$sample.points$Observed == TRUE, ]
   pres <- data.frame(x = pres$x, y = pres$y, presence = 1)
   
-  message("Presence Points: ", nrow(pres))
+  message("Presence points: ", nrow(pres))
   
   # -------------------------------------------------------------------
-  # 2. Räumliche Geometrie (EPSG:3035)
+  # 2. Spatial geometry (EPSG:3035)
   # -------------------------------------------------------------------
   pres_sf <- sf::st_as_sf(pres, coords = c("x", "y"), crs = 3035)
   
   # -------------------------------------------------------------------
-  # 3. Vorhersagepunkte für kNNDM (aus Raster)
+  # 3. Prediction points for kNNDM (from raster)
   # -------------------------------------------------------------------
   predictor_raster <- terra::rast("Data/raster/pc_raster_masked.tif")
   predictor_raster <- terra::project(predictor_raster, "EPSG:3035")
@@ -47,7 +47,7 @@ split_data_knndm <- function(sampling, species_PA,
   pred_pts <- sf::st_transform(pred_pts, crs = 3035)
   
   # -------------------------------------------------------------------
-  # 4. kNNDM NUR auf Presence Points
+  # 4. kNNDM ONLY on presence points
   # -------------------------------------------------------------------
   knn <- tryCatch(
     CAST::knndm(
@@ -56,20 +56,20 @@ split_data_knndm <- function(sampling, species_PA,
       k          = k
     ),
     error = function(e) {
-      message("kNNDM fehlgeschlagen: ", e$message)
-      stop("kNNDM konnte nicht durchgeführt werden.")
+      message("kNNDM failed: ", e$message)
+      stop("kNNDM could not be performed.")
     }
   )
   
-  # Fold-Nummern
+  # Fold numbers
   fold_ids    <- knn$clusters
   pres$fold   <- fold_ids
   n_folds     <- max(fold_ids)
   
-  message("Fold-Verteilung: ", paste(table(fold_ids), collapse = ", "))
+  message("Fold distribution: ", paste(table(fold_ids), collapse = ", "))
   
   # -------------------------------------------------------------------
-  # 5. Presence Points splitten (80/20)
+  # 5. Split presence points (80/20)
   # -------------------------------------------------------------------
   set.seed(seed)
   train_folds <- sample(1:n_folds, size = floor(train_ratio * n_folds))
@@ -78,14 +78,14 @@ split_data_knndm <- function(sampling, species_PA,
   train_pres  <- pres[pres$fold %in% train_folds, c("x", "y", "presence")]
   test_pres   <- pres[pres$fold %in% test_folds,  c("x", "y", "presence")]
   
-  message("Train Presence: ", nrow(train_pres))
-  message("Test  Presence: ", nrow(test_pres))
+  message("Train presence: ", nrow(train_pres))
+  message("Test  presence: ", nrow(test_pres))
   
-  # Hilfsstring zum Koordinaten-Matching (Train-Presence identifizieren)
+  # Helper string for coordinate matching (identify train presence)
   train_pres_key <- paste(train_pres$x, train_pres$y)
   
   # -------------------------------------------------------------------
-  # 6a. GLM: Train-Presence + bg_glm
+  # 6a. GLM: train presence + bg_glm
   # -------------------------------------------------------------------
   bg_glm <- as.data.frame(sampling$bg_glm)
   bg_glm <- data.frame(x = bg_glm$x, y = bg_glm$y, presence = 0)
@@ -93,12 +93,12 @@ split_data_knndm <- function(sampling, species_PA,
   train_glm       <- rbind(train_pres, bg_glm)
   train_glm$split <- "train"
   
-  message("GLM Train: ", nrow(train_glm), " (",
-          sum(train_glm$presence == 1), " Presence / ",
-          sum(train_glm$presence == 0), " Pseudo-Absence)")
+  message("GLM train: ", nrow(train_glm), " (",
+          sum(train_glm$presence == 1), " presence / ",
+          sum(train_glm$presence == 0), " pseudo-absence)")
   
   # -------------------------------------------------------------------
-  # 6b. MaxEnt: Train-Presence + bg_maxent
+  # 6b. MaxEnt: train presence + bg_maxent
   # -------------------------------------------------------------------
   bg_maxent <- as.data.frame(sampling$bg_maxent)
   bg_maxent <- data.frame(x = bg_maxent$x, y = bg_maxent$y, presence = 0)
@@ -106,21 +106,21 @@ split_data_knndm <- function(sampling, species_PA,
   train_maxent       <- rbind(train_pres, bg_maxent)
   train_maxent$split <- "train"
   
-  message("MaxEnt Train: ", nrow(train_maxent), " (",
-          sum(train_maxent$presence == 1), " Presence / ",
-          sum(train_maxent$presence == 0), " Background)")
+  message("MaxEnt train: ", nrow(train_maxent), " (",
+          sum(train_maxent$presence == 1), " presence / ",
+          sum(train_maxent$presence == 0), " background)")
   
   # -------------------------------------------------------------------
-  # 6c. BRT/RF: 10 Runs, jeweils Train-Presence + Run-eigene Pseudo-Absences
+  # 6c. BRT/RF: 10 runs, each with train presence + run-specific pseudo-absences
   # -------------------------------------------------------------------
   train_brt_runs <- lapply(sampling$runs, function(run) {
     
-    # Presence-Zeilen des Runs, die auch im Train-Split liegen
+    # Presence rows of the run that also fall in the train split
     run_pres <- run[run$presence == 1, ]
     run_pres_key <- paste(run_pres$x, run_pres$y)
     run_pres_train <- run_pres[run_pres_key %in% train_pres_key, ]
     
-    # Pseudo-Absences des Runs (alle, unverändert)
+    # Pseudo-absences of the run (all, unchanged)
     run_abs <- run[run$presence == 0, ]
     
     run_train        <- rbind(run_pres_train, run_abs)
@@ -128,15 +128,15 @@ split_data_knndm <- function(sampling, species_PA,
     run_train
   })
   
-  message("BRT/RF Train: ", length(train_brt_runs), " Runs, je ~",
-          round(mean(sapply(train_brt_runs, nrow))), " Punkte im Schnitt")
+  message("BRT/RF train: ", length(train_brt_runs), " runs, ~",
+          round(mean(sapply(train_brt_runs, nrow))), " points on average")
   
   # -------------------------------------------------------------------
-  # 7. True Absences → gemeinsamer Testdatensatz für alle Modelle
+  # 7. True absences → shared test dataset for all models
   # -------------------------------------------------------------------
   pa_raster <- species_PA$pa.raster
   
-  # terra-Objekte werden beim saveRDS() "gepackt" -> vor Nutzung entpacken
+  # terra objects get "packed" by saveRDS() -> unwrap before use
   if (inherits(pa_raster, "PackedSpatRaster")) {
     pa_raster <- terra::unwrap(pa_raster)
   }
@@ -144,43 +144,43 @@ split_data_knndm <- function(sampling, species_PA,
   set.seed(seed)
   true_abs_pts <- terra::spatSample(
     pa_raster,
-    size      = n_true_abs * 2,  # Mehr samplen, dann filtern
+    size      = n_true_abs * 2,  # sample more, then filter
     method    = "random",
     na.rm     = TRUE,
     as.points = TRUE
   ) |> as.data.frame(geom = "XY")
   
-  # Nur echte Abwesenheiten (pa == 0)
+  # Only true absences (pa == 0)
   true_abs <- true_abs_pts[true_abs_pts[, 1] == 0, c("x", "y")]
   true_abs <- true_abs[1:min(n_true_abs, nrow(true_abs)), ]
   true_abs$presence <- 0
   
-  message("True Absences (Evaluation): ", nrow(true_abs))
+  message("True absences (evaluation): ", nrow(true_abs))
   
   # -------------------------------------------------------------------
-  # 8. Gemeinsamer Testdatensatz (für alle Modelle gleich)
+  # 8. Shared test dataset (identical for all models)
   # -------------------------------------------------------------------
   test_data        <- rbind(test_pres, true_abs)
   test_data$split  <- "test"
   
   message("─────────────────────────────────────")
-  message("TEST (gemeinsam): ", nrow(test_data), " Punkte | ",
-          sum(test_data$presence == 1), " Presence | ",
-          sum(test_data$presence == 0), " True Absence")
+  message("TEST (shared): ", nrow(test_data), " points | ",
+          sum(test_data$presence == 1), " presence | ",
+          sum(test_data$presence == 0), " true absence")
   message("─────────────────────────────────────")
   
   list(
     train_glm      = train_glm,
     train_maxent   = train_maxent,
-    train_brt_runs = train_brt_runs,   # Liste mit 10 Trainingssets
-    test           = test_data,        # gemeinsamer Testdatensatz
+    train_brt_runs = train_brt_runs,   # list with 10 training sets
+    test           = test_data,        # shared test dataset
     knn            = knn,
     fold_ids       = fold_ids
   )
 }
 
 # =============================================================================
-# 1.2 Hilfsfunktion: Datensätze als GeoPackage für QGIS speichern
+# 1.2 Helper function: save datasets as GeoPackage for QGIS
 # =============================================================================
 
 save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
@@ -189,7 +189,7 @@ save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
   gpkg_path <- file.path(out_dir, paste0("split_", sp, ".gpkg"))
   
   # -------------------------------------------------------------------
-  # GLM Training
+  # GLM training
   # -------------------------------------------------------------------
   glm_sf <- sf::st_as_sf(split$train_glm, coords = c("x", "y"), crs = 3035)
   glm_sf$type <- ifelse(glm_sf$presence == 1, "presence", "pseudo_absence")
@@ -197,7 +197,7 @@ save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
                delete_layer = TRUE, quiet = TRUE)
   
   # -------------------------------------------------------------------
-  # MaxEnt Training
+  # MaxEnt training
   # -------------------------------------------------------------------
   maxent_sf <- sf::st_as_sf(split$train_maxent, coords = c("x", "y"), crs = 3035)
   maxent_sf$type <- ifelse(maxent_sf$presence == 1, "presence", "background")
@@ -205,7 +205,7 @@ save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
                delete_layer = TRUE, quiet = TRUE)
   
   # -------------------------------------------------------------------
-  # BRT/RF Training (alle 10 Runs in einem Layer, mit Run-ID als Spalte)
+  # BRT/RF training (all 10 runs in one layer, with run ID as column)
   # -------------------------------------------------------------------
   brt_combined <- do.call(rbind, lapply(seq_along(split$train_brt_runs), function(i) {
     run_df <- split$train_brt_runs[[i]]
@@ -218,7 +218,7 @@ save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
                delete_layer = TRUE, quiet = TRUE)
   
   # -------------------------------------------------------------------
-  # Testdatensatz (gemeinsam)
+  # Test dataset (shared)
   # -------------------------------------------------------------------
   test_sf <- sf::st_as_sf(split$test, coords = c("x", "y"), crs = 3035)
   test_sf$type <- ifelse(test_sf$presence == 1, "presence", "true_absence")
@@ -226,7 +226,7 @@ save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
                delete_layer = TRUE, quiet = TRUE)
   
   # -------------------------------------------------------------------
-  # Optional: kNNDM Folds visualisieren (alle Presence-Punkte mit Fold-ID)
+  # Optional: visualise kNNDM folds (all presence points with fold ID)
   # -------------------------------------------------------------------
   pres_folds <- sampling$po$sample.points[
     sampling$po$sample.points$Observed == TRUE, ]
@@ -237,11 +237,11 @@ save_as_gpkg <- function(split, sp, out_dir = "Data/species/split_knndm/gpkg") {
   sf::st_write(folds_sf, gpkg_path, layer = "knndm_folds",
                delete_layer = TRUE, quiet = TRUE)
   
-  message("✓ GeoPackage gespeichert: ", gpkg_path)
+  message("✓ GeoPackage saved: ", gpkg_path)
 }
 
 # =============================================================================
-# 2. Split für alle Arten + Speichern
+# 2. Split for all species + save
 # =============================================================================
 
 species_list <- c("narrow", "low_mid", "high_mid", "broad")

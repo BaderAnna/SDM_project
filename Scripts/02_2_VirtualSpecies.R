@@ -6,14 +6,14 @@ library(terra)
 library(virtualspecies)
 library(predicts)
 
-# Daten einlesen
+# Read data
 pc_raster_masked <- terra::rast("Data/raster/pc_raster_masked.tif")
 
-# Raster in metrisches KBS transformieren
+# Transform raster to metric CRS
 pc_raster_masked <- terra::project(pc_raster_masked, "EPSG:3035")
 
 # =============================================================================
-# Helper-Funktion: Sampling für eine Art
+# Helper function: sampling for one species
 # =============================================================================
 sample_species <- function(species_PA, n_pres = 1000,
                            n_glm_abs = 10000, n_brt_abs = 1000,
@@ -36,11 +36,11 @@ sample_species <- function(species_PA, n_pres = 1000,
     species_PA$pa.raster, n = n_maxent_bg
   ))
   
-  # Presence-Punkte extrahieren
+  # Extract presence points
   pres <- po$sample.points[po$sample.points$Observed == 1, c("x", "y")]
   pres$presence <- 1
   
-  # BRT & RF: 10 Runs mit je n_brt_abs zufälligen pseudo-absences
+  # BRT & RF: 10 runs with n_brt_abs random pseudo-absences each
   runs <- list()
   for (i in 1:n_runs) {
     set.seed(i)
@@ -55,13 +55,13 @@ sample_species <- function(species_PA, n_pres = 1000,
     po        = po,         # presence-only (MaxEnt & GLM presences)
     bg_glm    = bg_glm,     # GLM pseudo-absences
     bg_maxent = bg_maxent,  # MaxEnt background points
-    pres      = pres,       # BRT/RF presences (fix)
-    runs      = runs        # BRT/RF 10 Runs
+    pres      = pres,       # BRT/RF presences (fixed)
+    runs      = runs        # BRT/RF 10 runs
   ))
 }
 
 # =============================================================================
-# Virtuelle Arten & Sampling
+# Virtual species & sampling
 # =============================================================================
 set.seed(42)
 
@@ -78,13 +78,13 @@ for (sp in names(species_list)) {
   
   sd_val <- species_list[[sp]]$sd
   
-  # --- Reaktionskurven definieren ---
+  # --- Define response curves ---
   params <- formatFunctions(
     PC1 = c(fun = "dnorm", mean = 0, sd = sd_val),
     PC2 = c(fun = "dnorm", mean = 0, sd = sd_val)
   )
   
-  # --- Virtuelle Art erstellen ---
+  # --- Create virtual species ---
   virtual_sp <- generateSpFromFun(
     raster.stack = pc_raster_masked,
     parameters   = params,
@@ -93,7 +93,7 @@ for (sp in names(species_list)) {
   )
   virtual_sp$species.name <- sp
   
-  # --- PA konvertieren ---
+  # --- Convert to PA ---
   virtual_sp_PA <- convertToPA(
     virtual_sp,
     beta  = 0.5,
@@ -104,7 +104,7 @@ for (sp in names(species_list)) {
   # --- Sampling ---
   sampling <- sample_species(virtual_sp_PA)
   
-  # --- Speichern ---
+  # --- Save ---
   saveRDS(
     list(virtual    = virtual_sp,
          virtual_PA = virtual_sp_PA),
@@ -116,15 +116,15 @@ for (sp in names(species_list)) {
     paste0("Data/species/sampling_", sp, ".RDS")
   )
   
-  message("✓ ", sp, " (σ = ", sd_val, ") gespeichert | Presences = ",
+  message("✓ ", sp, " (σ = ", sd_val, ") saved | Presences = ",
           sum(sampling$po$sample.points$Observed == 1))
 }
 
-summary(virtual_sp$suitab.raster)  # Wertebereich der Suitability prüfen
+summary(virtual_sp$suitab.raster)  # check range of suitability values
 
 
 # =============================================================================
-# Visualisierung: Eignungskarten der 4 virtuellen Arten
+# Visualisation: suitability maps of the 4 virtual species
 # =============================================================================
 library(ggplot2)
 library(tidyterra)
@@ -138,7 +138,7 @@ species_list <- list(
   broad    = list(sd = 0.8)
 )
 
-# Labels für die Plots
+# Labels for the plots
 species_labels <- c(
   narrow   = "Narrow\n(σ = 0.2)",
   low_mid  = "Low-Mid\n(σ = 0.4)",
@@ -146,7 +146,7 @@ species_labels <- c(
   broad    = "Broad\n(σ = 0.8)"
 )
 
-# Plot für jede Art
+# Plot for each species
 plots <- lapply(names(species_list), function(sp) {
   
   obj     <- readRDS(paste0("Data/species/species_", sp, ".RDS"))
@@ -158,7 +158,7 @@ plots <- lapply(names(species_list), function(sp) {
       option   = "viridis",
       na.value = "white",
       name     = "Suitability",
-      limits   = c(0, 1)        # einheitliche Skala für alle 4!
+      limits   = c(0, 1)        # uniform scale across all 4!
     ) +
     labs(title = species_labels[sp]) +
     theme_void() +
@@ -172,7 +172,7 @@ plots <- lapply(names(species_list), function(sp) {
     )
 })
 
-# Gemeinsame Legende extrahieren
+# Extract shared legend
 legend_plot <- ggplot() +
   tidyterra::geom_spatraster(
     data = readRDS("Data/species/species_narrow.RDS")$virtual$suitab.raster
@@ -191,7 +191,7 @@ legend_plot <- ggplot() +
     legend.key.width   = unit(0.4, "cm")
   )
 
-# Legende extrahieren
+# Extract legend
 get_legend <- function(p) {
   gt   <- ggplot_gtable(ggplot_build(p))
   leg  <- which(sapply(gt$grobs, function(x) x$name) == "guide-box")
@@ -200,7 +200,7 @@ get_legend <- function(p) {
 
 legend <- get_legend(legend_plot)
 
-# Zusammenfügen
+# Combine plots
 wrap_plots(plots, nrow = 2) +
   plot_annotation(
     title    = "Virtual Species - Habitat Suitability",
