@@ -5,59 +5,61 @@ library(CAST)
 library(rnaturalearth)
 if (!requireNamespace("pROC", quietly = TRUE)) install.packages("pROC")
 library(pROC)
+library(ggplot2)
+library(patchwork)
 
 # =============================================================================
-# WorldClim Raster laden, VIF-Reduktion, maskieren, speichern
+# Load WorldClim raster, VIF reduction, mask, save
 # =============================================================================
 
-# 1. Raster einlesen
+# 1. Read raster
 r <- terra::rast("Data/raster/climate/wc2.1_country/DEU_wc2.1_30s_bio.tif")
 
-# 2. Germany-Grenze laden (VOR allem anderen)
+# 2. Load Germany boundary (BEFORE everything else)
 germany_sf <- rnaturalearth::ne_countries(country = "Germany", 
                                           scale = "medium", 
                                           returnclass = "sf")
 
-# 3. ERST maskieren/croppen, DANN VIF berechnen
+# 3. FIRST mask/crop, THEN calculate VIF
 r_masked <- terra::mask(r, terra::vect(germany_sf))
 r_masked <- terra::crop(r_masked, terra::vect(germany_sf))
 
-# 4. Werte aus der KORREKT maskierten Version extrahieren
+# 4. Extract values from the CORRECTLY masked version
 vals_19 <- as.data.frame(terra::values(r_masked, na.rm = TRUE))
 
-# 5. VIF auf Basis der korrekten Studienfläche
+# 5. VIF based on the correct study area
 set.seed(42)
 vif_result <- usdm::vifstep(vals_19, th = 10)
 selected_vars <- as.character(vif_result@results$Variables)
-message("Behaltene Variablen: ", paste(selected_vars, collapse = ", "))
+message("Retained variables: ", paste(selected_vars, collapse = ", "))
 
-# 6. Reduziertes Raster erstellen (schon maskiert)
+# 6. Create reduced raster (already masked)
 r_reduced <- r_masked[[selected_vars]]
 names(r_reduced) <- selected_vars
 
-# 7. Projektion (Maskierung ist ja schon erfolgt, Reihenfolge hier weniger kritisch)
+# 7. Projection (masking already done, order less critical here)
 r_reduced_3035 <- terra::project(r_reduced, "EPSG:3035")
 names(r_reduced_3035) <- selected_vars
 
 germany_sf_3035 <- sf::st_transform(germany_sf, crs = 3035)
 
-# 8. Finale Sicherheits-Maskierung (falls durch project() Randpixel entstehen)
+# 8. Final safety mask (in case project() creates edge pixels)
 env_raster_masked <- terra::mask(r_reduced_3035, terra::vect(germany_sf_3035))
 names(env_raster_masked) <- selected_vars
 
-# 9. Speichern
+# 9. Save
 dir.create("Data/raster", recursive = TRUE, showWarnings = FALSE)
 terra::writeRaster(env_raster_masked, "Data/raster/env_raster_masked.tif", overwrite = TRUE)
 saveRDS(selected_vars, "Data/raster/selected_vars.RDS")
 
-message("Raster-Namen: ", paste(names(env_raster_masked), collapse = ", "))
+message("Raster names: ", paste(names(env_raster_masked), collapse = ", "))
 terra::plot(env_raster_masked)
 
 # =============================================================================
-# Plot der 7 ausgewählten Bioklimavariablen (nach VIF-Auswahl) - mit Klarnamen
+# Plot of the 7 selected bioclimatic variables (after VIF selection) - with readable names
 # =============================================================================
 
-# Lookup-Tabelle: technischer Name -> beschreibender Titel
+# Lookup table: technical name -> descriptive title
 bio_labels <- c(
   wc2.1_30s_bio_1  = "Mean Temp.",
   wc2.1_30s_bio_2  = "Mean Diurnal Range",
@@ -80,13 +82,13 @@ bio_labels <- c(
   wc2.1_30s_bio_19 = "Precip. Coldest Quarter"
 )
 
-# Variablen aus der VIF-Auswahl laden
+# Load variables from the VIF selection
 selected_vars <- readRDS("Data/raster/selected_vars.RDS")
 
 env_vars <- lapply(selected_vars, function(v) {
   list(
     name   = v,
-    label  = bio_labels[[v]],   # Klarname statt technischem Namen
+    label  = bio_labels[[v]],   # readable name instead of technical name
     option = "cividis"
   )
 })
@@ -111,7 +113,7 @@ plots_env <- lapply(env_vars, function(v) {
     )
 })
 
-# Zusammenfügen
+# Combine plots
 wrap_plots(plots_env, ncol = 4) +
   plot_annotation(
     title    = "Selected Bioclimatic Variables",
