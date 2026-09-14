@@ -1,16 +1,12 @@
 # =============================================================================
-# GLM MODELLIERUNG (TRAINING)
-# Option B: alle 19 WorldClim Variablen -> VIF-Reduktion
-# Nutzt die im Skript "02_VirtualSpecies_presence_CV.R" (split_data_knndm())
-# bereits erzeugten Trainingsdaten (train_glm_<sp>.RDS).
-# Evaluierung erfolgt in separatem Skript auf Basis von test_<sp>.RDS.
+# GLM MODELLING
 # =============================================================================
 
 library(terra)
 library(sf)
 
 # =============================================================================
-# 1 - Raster + Variablen laden
+# 1 - Load raster + variables
 # =============================================================================
 
 env_raster_masked <- terra::rast("Data/raster/env_raster_masked.tif")
@@ -18,7 +14,7 @@ selected_vars      <- readRDS("Data/raster/selected_vars.RDS")
 names(env_raster_masked) <- selected_vars
 
 # =============================================================================
-# 2 - GLM-Formel dynamisch bauen
+# 2 - Build GLM formula dynamically
 # =============================================================================
 
 build_glm_formula <- function(vars) {
@@ -31,16 +27,16 @@ glm_formula <- build_glm_formula(selected_vars)
 print(glm_formula)
 
 # =============================================================================
-# 3 - Trainingsdaten vorbereiten
-#     (Fold-Split kommt bereits aus train_glm_<sp>.RDS -> hier nur noch
-#      Umweltwerte an den Koordinaten extrahieren)
+# 3 - Prepare training data
+#     (fold split already comes from train_glm_<sp>.RDS -> here we only
+#      need to extract environmental values at the coordinates)
 # =============================================================================
 
 prepare_glm_train_data <- function(train_df, env_raster) {
   
-  if (nrow(train_df) == 0) stop("train_df ist leer!")
+  if (nrow(train_df) == 0) stop("train_df is empty!")
   if (any(is.na(train_df$x)) || any(is.na(train_df$y))) {
-    stop("x oder y enthalten NA-Werte!")
+    stop("x or y contain NA values!")
   }
   
   coords_3035  <- as.matrix(train_df[, c("x", "y")])
@@ -50,32 +46,32 @@ prepare_glm_train_data <- function(train_df, env_raster) {
   dat <- cbind(train_df, env_vals)
   dat <- na.omit(dat)
   
-  message("prepare_glm_train_data: ", nrow(dat), " Zeilen | ",
-          sum(dat$presence == 1), " Presence | ",
-          sum(dat$presence == 0), " Pseudo-Absence")
+  message("prepare_glm_train_data: ", nrow(dat), " rows | ",
+          sum(dat$presence == 1), " presence | ",
+          sum(dat$presence == 0), " pseudo-absence")
   
   return(dat)
 }
 
 # =============================================================================
-# 4 - GLM auf Trainingsdaten fitten
+# 4 - Fit GLM on training data
 # =============================================================================
 
 run_glm_train <- function(train_df, env_raster, glm_formula, seed = 42) {
   
   dat <- prepare_glm_train_data(train_df, env_raster)
   
-  if (nrow(dat) == 0) stop("dat ist nach prepare_glm_train_data() leer!")
+  if (nrow(dat) == 0) stop("dat is empty after prepare_glm_train_data()!")
   
-  # Prüfe, ob alle Variablen der Formel in dat existieren
+  # Check whether all variables in the formula exist in dat
   missing_vars <- setdiff(all.vars(glm_formula), names(dat))
   if (length(missing_vars) > 0) {
-    stop("Fehlende Variablen in dat: ", paste(missing_vars, collapse = ", "))
+    stop("Missing variables in dat: ", paste(missing_vars, collapse = ", "))
   }
   
   set.seed(seed)
   
-  # Gewichte: Presences = 1, Pseudo-Absences = n_pres / n_abs
+  # Weights: presences = 1, pseudo-absences = n_pres / n_abs
   n_pres <- sum(dat$presence == 1)
   n_abs  <- sum(dat$presence == 0)
   dat$.weights <- ifelse(dat$presence == 1, 1, n_pres / n_abs)
@@ -83,11 +79,11 @@ run_glm_train <- function(train_df, env_raster, glm_formula, seed = 42) {
   model <- withCallingHandlers(
     glm(glm_formula, data = dat, family = binomial, weights = .weights),
     error = function(e) {
-      message("Modelltraining fehlgeschlagen: ", e$message)
-      stop("Modell konnte nicht trainiert werden.")
+      message("Model training failed: ", e$message)
+      stop("Model could not be trained.")
     },
     warning = function(w) {
-      message("Warnung beim Modelltraining: ", w$message)
+      message("Warning during model training: ", w$message)
     }
   )
   
@@ -97,7 +93,7 @@ run_glm_train <- function(train_df, env_raster, glm_formula, seed = 42) {
 }
 
 # =============================================================================
-# 5 - Für alle Arten ausführen
+# 5 - Run for all species
 # =============================================================================
 
 species_list     <- c("narrow", "low_mid", "high_mid", "broad")
@@ -105,7 +101,7 @@ glm_models_train <- list()
 
 for (sp in species_list) {
   
-  message("===== ", sp, " (Training) =====")
+  message("===== ", sp, " (training) =====")
   
   train_glm <- readRDS(paste0("Data/species/split_knndm/train_glm_", sp, ".RDS"))
   
@@ -117,7 +113,7 @@ for (sp in species_list) {
 }
 
 # =============================================================================
-# 6 - Speichern der Trainingsmodelle
+# 6 - Save training models
 # =============================================================================
 
 dir.create("Data/models/knndm", recursive = TRUE, showWarnings = FALSE)
@@ -127,7 +123,5 @@ for (sp in species_list) {
     glm_models_train[[sp]],
     paste0("Data/models/knndm/glm_", sp, "_train.RDS")
   )
-  message("✓ Trainingsmodell gespeichert: glm_", sp, "_train.RDS")
+  message("✓ Training model saved: glm_", sp, "_train.RDS")
 }
-
-
